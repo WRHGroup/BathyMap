@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BathyMap</title>
 <meta name="description" content="Map and downloads of raw bathymetry survey data.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="preconnect" href="https://a.basemaps.cartocdn.com">
+<link rel="preconnect" href="https://b.basemaps.cartocdn.com">
+<link rel="preconnect" href="https://server.arcgisonline.com">
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -30,14 +31,23 @@
 
     <div class="list-head">
       <label class="eyebrow" for="line-filter">Survey lines</label>
-      <input id="line-filter" type="search" placeholder="Filter by line, date, area or platform" autocomplete="off">
+      <select id="location-filter" class="location-filter" aria-label="Show lines from one location" hidden></select>
+      <input id="line-filter" type="search" placeholder="Filter by line, date, location or platform" autocomplete="off">
     </div>
+    <div id="list-tools" class="list-tools" hidden>
+      <label class="check-all"><input type="checkbox" id="check-all" checked> <span id="check-all-label">All lines</span></label>
+      <span class="list-tools-actions">
+        <button type="button" id="collapse-all" class="text-button">Collapse all</button>
+        <button type="button" id="expand-all" class="text-button">Expand all</button>
+      </span>
+    </div>
+    <div id="list-scroll" class="list-scroll">
     <div id="line-list" class="line-list">
       <p class="note">Loading…</p>
     </div>
 
-    <section class="about">
-      <h2 class="eyebrow">About this data</h2>
+    <details class="about" open>
+      <summary class="eyebrow">About this data</summary>
       <p id="site-description"></p>
       <dl class="refs">
         <dt>Depth</dt><dd id="depth-reference">as logged by the instrument</dd>
@@ -47,23 +57,36 @@
         <dt id="contact-label" hidden>Contact</dt><dd id="contact" hidden></dd>
       </dl>
       <p id="generated" class="note"></p>
-    </section>
+    </details>
+    </div>
   </aside>
 
   <div class="map-wrap">
     <div id="map" role="application" aria-label="Map of survey lines"></div>
     <div id="probe" class="probe" hidden></div>
     <div id="select-bar" class="select-bar" hidden aria-live="polite"></div>
-    <div id="legend" class="legend" aria-label="Depth colour scale">
-      <div class="legend-title">Depth (m)</div>
+    <div id="legend" class="legend" aria-label="Colour scale">
+      <div class="legend-head">
+        <label class="legend-title" for="colour-by">Colour by</label>
+        <span id="legend-unit" class="legend-unit">(m)</span>
+      </div>
+      <select id="colour-by" class="legend-select" aria-label="Colour the soundings by"><option>Water depth</option></select>
       <canvas id="legend-ramp" width="240" height="12"></canvas>
       <div id="legend-ticks" class="legend-ticks"></div>
+      <div id="legend-note" class="legend-note" hidden></div>
+      <div class="scale-row">
+        <div id="scale-mode" class="scale-mode" role="group" aria-label="Colour scale range">
+          <button type="button" data-mode="view" aria-pressed="true">This view</button>
+          <button type="button" data-mode="all" aria-pressed="false">All data</button>
+        </div>
+        <span id="scale-note" class="scale-note"></span>
+      </div>
       <div id="legend-hint" class="legend-hint">Zoom in to see soundings</div>
     </div>
   </div>
 </main>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

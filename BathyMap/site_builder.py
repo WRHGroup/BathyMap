@@ -4,6 +4,7 @@ import re
 import json
 import math
 import time
+import stat
 import shutil
 import datetime
 import numpy as np
@@ -167,6 +168,48 @@ class BathymetrySiteBuilder(object):
             self.depth_reference = 'as logged by the instrument'
         else:
             self.depth_reference = loaded_file.pop('depth_reference')
+
+        if loaded_file.get('map_variables') is None:
+            print('map variables set to water depth, bed elevation (Height - Depth), GNSS height and platform speed. If you wish to change this default value, add map_variables to the inputs provided in the JSON file')
+            self.map_variables = [
+                {'column': 'Depth', 'label': 'Water depth', 'unit': 'm', 'colours': 'depth', 'decimals': 3},
+                {'column': 'Height - Depth', 'label': 'Bed elevation', 'note': 'GNSS height minus water depth', 'unit': 'm', 'colours': 'elevation', 'decimals': 3},
+                {'column': 'Height', 'label': 'GNSS height', 'unit': 'm', 'colours': 'sequential', 'decimals': 3},
+                {'column': 'Speed', 'label': 'Platform speed', 'unit': 'm/s', 'colours': 'sequential', 'decimals': 2}
+            ]
+        else:
+            self.map_variables = loaded_file.pop('map_variables')
+        if len(self.map_variables) == 0 or self.map_variables[0].get('column') != 'Depth':
+            print('Depth is added as the first map variable, so the map opens coloured by water depth')
+            self.map_variables.insert(0, {'column': 'Depth', 'label': 'Water depth', 'unit': 'm', 'colours': 'depth', 'decimals': 3})
+        for map_variable in self.map_variables:
+            if map_variable.get('column') is None:
+                raise ValueError('each entry of map_variables needs a "column" key, for example {"column": "Speed"}')
+            if map_variable.get('colours', 'sequential') not in ['depth', 'elevation', 'sequential']:
+                raise ValueError('the colours of the map variable "{}" must be "depth", "elevation" or "sequential"'.format(map_variable['column']))
+
+        if loaded_file.get('default_basemap') is None:
+            print('default basemap set to "satellite". If you wish to change this default value, add default_basemap to the inputs provided in the JSON file')
+            self.default_basemap = 'satellite'
+        else:
+            self.default_basemap = loaded_file.pop('default_basemap')
+        basemap_names = ['satellite', 'street', 'topographic', 'openstreetmap', 'light', 'dark', 'ocean', 'carto-voyager', 'carto-positron']
+        if self.default_basemap not in basemap_names:
+            raise ValueError('default_basemap must be one of: {}'.format(', '.join(basemap_names)))
+
+        if loaded_file.get('carto_api_key') is None:
+            print('CARTO API key set to "" (the CARTO basemaps are not offered). If you wish to change this default value, add carto_api_key to the inputs provided in the JSON file')
+            self.carto_api_key = ''
+        else:
+            self.carto_api_key = loaded_file.pop('carto_api_key')
+        if self.default_basemap.startswith('carto') and self.carto_api_key == '':
+            raise ValueError('default_basemap "{}" needs a carto_api_key in the JSON file'.format(self.default_basemap))
+
+        if loaded_file.get('start_with_list_collapsed') is None:
+            print('start with list collapsed set to True. If you wish to change this default value, add start_with_list_collapsed to the inputs provided in the JSON file')
+            self.start_with_list_collapsed = True
+        else:
+            self.start_with_list_collapsed = loaded_file.pop('start_with_list_collapsed')
 
     def setup(self):
         """
@@ -365,15 +408,15 @@ class BathymetrySiteBuilder(object):
 
     def prepare_output_directory(self):
         """
-        Empties the output directory if it was created by a previous build (it then contains a .bathymap-build marker
-        file), copies the site template into it, and creates the data sub-folders. Raises an error if the output directory
+        Empties the output directory (with self.empty_output_directory) if it was created by a previous build (it then
+        contains a .bathymap-build marker file), copies the site template into it, and creates the data sub-folders. Raises an error if the output directory
         exists, is not empty and was not created by this tool, so that no unrelated folder is ever deleted.
         """
         marker_file = os.path.join(self.output_directory, '.bathymap-build')
         if os.path.isdir(self.output_directory) and len(os.listdir(self.output_directory)) > 0:
             if not os.path.isfile(marker_file):
                 raise ValueError('the output directory "{}" is not empty and was not created by BathyMap; choose another output_directory'.format(self.output_directory))
-            shutil.rmtree(self.output_directory)
+            self.empty_output_directory()
         shutil.copytree(self.site_template_directory, self.output_directory, dirs_exist_ok=True)
         for sub_folder in ['points', 'csv', 'raw']:
             os.makedirs(os.path.join(self.output_directory, 'data', sub_folder), exist_ok=True)
@@ -381,6 +424,37 @@ class BathymetrySiteBuilder(object):
             f.write('created by BathyMap on ' + datetime.datetime.now(datetime.timezone.utc).isoformat() + '\n')
         with open(os.path.join(self.output_directory, '.nojekyll'), "w") as f:
             f.write('')
+
+    def empty_output_directory(self):
+        """
+        Deletes everything inside the output directory but keeps the directory itself. On Windows, OneDrive syncing, an
+        open File Explorer window or the preview server can briefly lock files and folders, so each deletion is retried
+        for a few seconds and read-only flags are cleared first. Folders that stay locked are left in place, since they
+        are empty and harmless. A file that stays locked stops the build with an explanation of what to close.
+        """
+        for root, dirs, files in os.walk(self.output_directory, topdown=False):
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+                for attempt in range(10):
+                    try:
+                        os.chmod(file_path, stat.S_IWRITE)
+                        os.remove(file_path)
+                        break
+                    except PermissionError:
+                        if attempt == 9:
+                            raise ValueError('the file "{}" is in use and could not be replaced. Stop the preview server (Ctrl+C), close any File Explorer window showing the output folder, wait for OneDrive to finish syncing, and run the build again'.format(file_path))
+                        time.sleep(0.5)
+            for dir_name in dirs:
+                dir_path = os.path.join(root, dir_name)
+                for attempt in range(10):
+                    try:
+                        os.rmdir(dir_path)
+                        break
+                    except OSError:
+                        if attempt == 9:
+                            print('could not remove the empty folder', dir_path, '(it is in use); it is left in place')
+                        else:
+                            time.sleep(0.2)
 
     def raw_file_link(self, file_path):
         """
@@ -403,12 +477,27 @@ class BathymetrySiteBuilder(object):
         print('copy_raw_files is False and repository_url is not a GitHub address, so', os.path.basename(file_path), 'has no raw download link')
         return None
 
+    def map_variable_values(self, soundings, column):
+        """
+        Returns the values of one map variable for the given soundings, or None when the soundings do not have it.
+        The column is either the name of a column of the raw file (for example "Speed") or the difference of two
+        columns written as "A - B" (for example "Height - Depth").
+        """
+        if column in soundings.columns:
+            return pd.to_numeric(soundings[column], errors='coerce')
+        if ' - ' in column:
+            first_column, second_column = [part.strip() for part in column.split(' - ', 1)]
+            if first_column in soundings.columns and second_column in soundings.columns:
+                return pd.to_numeric(soundings[first_column], errors='coerce') - pd.to_numeric(soundings[second_column], errors='coerce')
+        return None
+
     def write_line_points(self, line_id, soundings):
         """
         Writes the thinned soundings of one line as a compact JSON file that the map loads, and returns the number of
         points written. The file holds the date and time of the first sounding of the line (start) and parallel arrays
         of latitude, longitude, depth and the time of each sounding in seconds after start (t), from which the website
-        rebuilds the full date and time of every sounding.
+        rebuilds the full date and time of every sounding. The other map variables of the line (self.map_variables)
+        are written under values, keyed by their column.
         """
         map_soundings = self.thin_soundings(soundings=soundings, maximum_points=self.max_map_points_per_line)
         line_start = soundings['Datetime'].iloc[0]
@@ -418,7 +507,14 @@ class BathymetrySiteBuilder(object):
         points['lon'] = np.round(map_soundings['Longitude'].values, 7).tolist()
         points['depth'] = np.round(map_soundings['Depth'].values, 3).tolist()
         points['t'] = np.round((map_soundings['Datetime'] - line_start).dt.total_seconds().values, 2).tolist()
-        fn = os.path.join(self.output_directory, 'data', 'points', line_id + '.json')
+        points['values'] = {}
+        for map_variable in self.map_variables[1:]:
+            values = self.map_variable_values(soundings=map_soundings, column=map_variable['column'])
+            if values is None:
+                continue
+            rounded_values = np.round(values.values.astype(float), int(map_variable.get('decimals', 3)) + 1)
+            points['values'][map_variable['column']] = [None if np.isnan(value) else float(value) for value in rounded_values]
+        fn =os.path.join(self.output_directory, 'data', 'points', line_id + '.json')
         with open(fn, "w") as f:
             json.dump(points, f, separators=(',', ':'))
         return len(map_soundings)
@@ -498,10 +594,47 @@ class BathymetrySiteBuilder(object):
         record['files']['raw_name'] = os.path.basename(file_path)
         return record
 
-    def site_settings(self, line_records, all_depths):
+    def site_map_variables(self, all_values):
+        """
+        Returns the map variables offered in the "Colour by" menu of the website, each with the range of its colour
+        scale: the range given in the JSON file, or else the 2nd to 98th percentile of all its values. Water depth is
+        always kept; any other variable is left out when no line has it or when it has the same value everywhere.
+        """
+        site_variables = []
+        for vx, map_variable in enumerate(self.map_variables):
+            column = map_variable['column']
+            values = np.array(all_values.get(column, []), dtype=float)
+            values = values[~np.isnan(values)]
+            if vx > 0 and (len(values) == 0 or values.min() == values.max()):
+                print('map variable "{}" is not offered on the map because the data has no varying values for it'.format(column))
+                continue
+            if map_variable.get('range') is not None:
+                colour_range = map_variable['range']
+            elif vx == 0 and self.depth_colour_range is not None:
+                colour_range = self.depth_colour_range
+            elif len(values) > 0:
+                colour_range = [float(np.percentile(values, 2)), float(np.percentile(values, 98))]
+                if colour_range[0] == colour_range[1]:
+                    colour_range = [float(values.min()), float(values.max())]
+                colour_range = [round(colour_range[0], 3), round(colour_range[1], 3)]
+            else:
+                colour_range = [0, 1]
+            site_variable = {}
+            site_variable['column'] = column
+            site_variable['label'] = map_variable.get('label', column)
+            site_variable['unit'] = map_variable.get('unit', '')
+            site_variable['colours'] = map_variable.get('colours', 'sequential')
+            site_variable['decimals'] = int(map_variable.get('decimals', 3))
+            site_variable['note'] = map_variable.get('note', '')
+            site_variable['range'] = colour_range
+            site_variables.append(site_variable)
+        return site_variables
+
+    def site_settings(self, line_records, all_depths, all_values):
         """
         Returns the dictionary with the website-wide settings written at the top of the index: title, description,
-        references, links, the overall bounding box and the depth range used by the colour scale.
+        references, links, the default basemap, the overall bounding box, the depth range used by the colour scale and
+        the map variables visitors can colour the soundings by.
         """
         if self.depth_colour_range is None:
             if len(all_depths) > 0:
@@ -531,6 +664,10 @@ class BathymetrySiteBuilder(object):
         settings['time_reference'] = self.time_reference
         settings['depth_reference'] = self.depth_reference
         settings['depth_colour_range'] = depth_range
+        settings['map_variables'] = self.site_map_variables(all_values=all_values)
+        settings['default_basemap'] = self.default_basemap
+        settings['carto_api_key'] = self.carto_api_key
+        settings['start_with_list_collapsed'] = self.start_with_list_collapsed
         settings['bbox'] = overall_bbox
         settings['combined_csv'] = 'data/all_lines.csv' if self.write_combined_csv and len(line_records) > 0 else None
         settings['generated'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -549,6 +686,7 @@ class BathymetrySiteBuilder(object):
 
         line_records = []
         all_depths = []
+        all_values = {}
         for fx, file_path in enumerate(data_files):
             print("============================================ processing file " + str(fx + 1) + " of " + str(len(data_files)) + ": " + os.path.relpath(file_path, self.data_directory))
             line_id = self.line_id_from_path(file_path)
@@ -566,12 +704,16 @@ class BathymetrySiteBuilder(object):
                                                        number_of_map_points=number_of_map_points,
                                                        raw_link=raw_link))
             all_depths.extend(soundings['Depth'].tolist())
-            print('platform:', line_metadata.get('platform'), '| sensor:', line_metadata.get('sensor'))
+            for map_variable in self.map_variables:
+                values = self.map_variable_values(soundings=soundings, column=map_variable['column'])
+                if values is not None:
+                    all_values.setdefault(map_variable['column'], []).extend(values.tolist())
+            print('location:', line_metadata.get('location', '(none given)'), '| platform:', line_metadata.get('platform'), '| sensor:', line_metadata.get('sensor'))
             print('soundings:', len(soundings), '| map points:', number_of_map_points, '| depth range:',
                   round(soundings['Depth'].min(), 3), 'to', round(soundings['Depth'].max(), 3), 'm')
 
         index = {}
-        index['site'] = self.site_settings(line_records=line_records, all_depths=all_depths)
+        index['site'] = self.site_settings(line_records=line_records, all_depths=all_depths, all_values=all_values)
         index['lines'] = line_records
         fn = os.path.join(self.output_directory, 'data', 'index.json')
         with open(fn, "w") as f:

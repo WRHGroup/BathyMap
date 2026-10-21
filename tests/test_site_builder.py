@@ -137,3 +137,36 @@ def test_raw_file_link_to_repository():
 
     SiteModel.repository_url = ''
     assert(SiteModel.raw_file_link(data_files[0]) is None)
+
+
+def test_map_variables():
+    """
+    Checks that the map points hold the extra map variables, that "Height - Depth" is computed from the two columns,
+    and that the index lists the variables with depth first and the satellite basemap as the default.
+    """
+    SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
+    SiteModel.setup()
+    index = SiteModel.execute()
+    columns = [map_variable['column'] for map_variable in index['site']['map_variables']]
+    assert(columns[0] == 'Depth')
+    assert('Height - Depth' in columns)
+    assert(index['site']['default_basemap'] == 'satellite')
+    with open(os.path.join(SiteModel.output_directory, index['lines'][0]['files']['points'])) as f:
+        points = json.load(f)
+    assert(len(points['values']['Height']) == len(points['depth']))
+    difference = points['values']['Height'][0] - points['depth'][0]
+    assert(abs(points['values']['Height - Depth'][0] - difference) < 0.001)
+
+
+def test_location_metadata():
+    """
+    Checks that a location given in a per-file JSON reaches the metadata of that line only.
+    """
+    SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
+    SiteModel.setup()
+    index = SiteModel.execute()
+    locations = {}
+    for line in index['lines']:
+        locations[line['line']] = line['metadata'].get('location')
+    assert(locations['L0002'] == 'Test pond')
+    assert(locations['L0001'] is None)

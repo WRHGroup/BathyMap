@@ -9,7 +9,9 @@
     "data_directory": "data",
     "site_template_directory": "site",
     "output_directory": "docs",
-    "file_extensions": [".dep"],
+    "file_extensions": [
+        ".dep"
+    ],
     "accepted_gps_states": [],
     "max_map_points_per_line": 3000,
     "max_track_points_per_line": 200,
@@ -18,5 +20,39 @@
     "survey_metadata": {},
     "metadata_file_name": "metadata.json",
     "time_reference": "as logged by the instrument",
-    "depth_reference": "as logged by the instrument"
+    "depth_reference": "as logged by the instrument",
+    "default_basemap": "satellite",
+    "map_variables": [
+        {
+            "column": "Depth",
+            "label": "Water depth",
+            "unit": "m",
+            "colours": "depth",
+            "decimals": 3
+        },
+        {
+            "column": "Height - Depth",
+            "label": "Bed elevation",
+            "note": "GNSS height minus water depth",
+            "unit": "m",
+            "colours": "elevation",
+            "decimals": 3
+        },
+        {
+            "column": "Height",
+            "label": "GNSS height",
+            "unit": "m",
+            "colours": "sequential",
+            "decimals": 3
+        },
+        {
+            "column": "Speed",
+            "label": "Platform speed",
+            "unit": "m/s",
+            "colours": "sequential",
+            "decimals": 2
+        }
+    ],
+    "carto_api_key": "",
+    "start_with_list_collapsed": true
 }
