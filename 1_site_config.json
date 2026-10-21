@@ -21,36 +21,123 @@
     "metadata_file_name": "metadata.json",
     "time_reference": "as logged by the instrument",
     "depth_reference": "as logged by the instrument",
-    "default_basemap": "satellite",
+    "height_reference": "GNSS heights above the ellipsoid, as logged (no geoid model applied). They are not heights above sea level and do not match the contours of the topographic basemap; the difference depends on the location.",
+    "default_basemap": "openstreetmap",
     "map_variables": [
         {
             "column": "Depth",
             "label": "Water depth",
             "unit": "m",
             "colours": "depth",
-            "decimals": 3
+            "decimals": 3,
+            "group": "Bathymetry"
         },
         {
             "column": "Height - Depth",
             "label": "Bed elevation",
-            "note": "GNSS height minus water depth",
+            "note": "GNSS height minus water depth. Above the ellipsoid, not sea level",
             "unit": "m",
             "colours": "elevation",
-            "decimals": 3
+            "decimals": 3,
+            "group": "Bathymetry"
         },
         {
             "column": "Height",
             "label": "GNSS height",
+            "note": "Above the ellipsoid, not sea level",
             "unit": "m",
             "colours": "sequential",
-            "decimals": 3
+            "decimals": 3,
+            "group": "Bathymetry"
+        },
+        {
+            "column": "Time of day",
+            "label": "Time of day",
+            "unit": "",
+            "colours": "sequential",
+            "decimals": 0,
+            "format": "time",
+            "group": "Survey"
+        },
+        {
+            "column": "Trail Distance",
+            "label": "Distance along line",
+            "note": "From the first sounding of each line",
+            "unit": "m",
+            "from_line_start": true,
+            "colours": "sequential",
+            "decimals": 1,
+            "group": "Survey"
         },
         {
             "column": "Speed",
             "label": "Platform speed",
             "unit": "m/s",
             "colours": "sequential",
-            "decimals": 2
+            "decimals": 2,
+            "group": "Survey"
+        },
+        {
+            "column": "Flow Velocity",
+            "label": "Flow velocity",
+            "unit": "m/s",
+            "colours": "sequential",
+            "decimals": 2,
+            "group": "Survey"
+        },
+        {
+            "column": "Roll",
+            "label": "Roll",
+            "note": "Logged in radians, shown in degrees",
+            "unit": "°",
+            "scale": 57.29578,
+            "colours": "diverging",
+            "decimals": 1,
+            "group": "Quality"
+        },
+        {
+            "column": "Pitch",
+            "label": "Pitch",
+            "note": "Logged in radians, shown in degrees",
+            "unit": "°",
+            "scale": 57.29578,
+            "colours": "diverging",
+            "decimals": 1,
+            "group": "Quality"
+        },
+        {
+            "column": "Diff Delay",
+            "label": "Correction age",
+            "note": "Age of the RTK corrections",
+            "unit": "s",
+            "colours": "sequential",
+            "decimals": 1,
+            "group": "Quality"
+        },
+        {
+            "column": "HRMS",
+            "label": "Horizontal precision",
+            "unit": "m",
+            "colours": "sequential",
+            "decimals": 3,
+            "group": "Quality"
+        },
+        {
+            "column": "VRMS",
+            "label": "Vertical precision",
+            "unit": "m",
+            "colours": "sequential",
+            "decimals": 3,
+            "group": "Quality"
+        },
+        {
+            "column": "GPS State",
+            "label": "GPS state",
+            "note": "1 GPS, 2 DGPS, 4 RTK fixed, 5 RTK float",
+            "unit": "",
+            "colours": "sequential",
+            "decimals": 0,
+            "group": "Quality"
         }
     ],
     "carto_api_key": "",

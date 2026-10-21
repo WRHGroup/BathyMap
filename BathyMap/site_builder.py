@@ -170,12 +170,21 @@ class BathymetrySiteBuilder(object):
             self.depth_reference = loaded_file.pop('depth_reference')
 
         if loaded_file.get('map_variables') is None:
-            print('map variables set to water depth, bed elevation (Height - Depth), GNSS height and platform speed. If you wish to change this default value, add map_variables to the inputs provided in the JSON file')
+            print('map variables set to the bathymetry, survey and quality columns of CHC files. If you wish to change this default value, add map_variables to the inputs provided in the JSON file')
             self.map_variables = [
-                {'column': 'Depth', 'label': 'Water depth', 'unit': 'm', 'colours': 'depth', 'decimals': 3},
-                {'column': 'Height - Depth', 'label': 'Bed elevation', 'note': 'GNSS height minus water depth', 'unit': 'm', 'colours': 'elevation', 'decimals': 3},
-                {'column': 'Height', 'label': 'GNSS height', 'unit': 'm', 'colours': 'sequential', 'decimals': 3},
-                {'column': 'Speed', 'label': 'Platform speed', 'unit': 'm/s', 'colours': 'sequential', 'decimals': 2}
+                {'column': 'Depth', 'label': 'Water depth', 'unit': 'm', 'colours': 'depth', 'decimals': 3, 'group': 'Bathymetry'},
+                {'column': 'Height - Depth', 'label': 'Bed elevation', 'note': 'GNSS height minus water depth. Above the ellipsoid, not sea level', 'unit': 'm', 'colours': 'elevation', 'decimals': 3, 'group': 'Bathymetry'},
+                {'column': 'Height', 'label': 'GNSS height', 'note': 'Above the ellipsoid, not sea level', 'unit': 'm', 'colours': 'sequential', 'decimals': 3, 'group': 'Bathymetry'},
+                {'column': 'Time of day', 'label': 'Time of day', 'unit': '', 'colours': 'sequential', 'decimals': 0, 'format': 'time', 'group': 'Survey'},
+                {'column': 'Trail Distance', 'label': 'Distance along line', 'note': 'From the first sounding of each line', 'unit': 'm', 'from_line_start': True, 'colours': 'sequential', 'decimals': 1, 'group': 'Survey'},
+                {'column': 'Speed', 'label': 'Platform speed', 'unit': 'm/s', 'colours': 'sequential', 'decimals': 2, 'group': 'Survey'},
+                {'column': 'Flow Velocity', 'label': 'Flow velocity', 'unit': 'm/s', 'colours': 'sequential', 'decimals': 2, 'group': 'Survey'},
+                {'column': 'Roll', 'label': 'Roll', 'note': 'Logged in radians, shown in degrees', 'unit': '°', 'scale': 57.29578, 'colours': 'diverging', 'decimals': 1, 'group': 'Quality'},
+                {'column': 'Pitch', 'label': 'Pitch', 'note': 'Logged in radians, shown in degrees', 'unit': '°', 'scale': 57.29578, 'colours': 'diverging', 'decimals': 1, 'group': 'Quality'},
+                {'column': 'Diff Delay', 'label': 'Correction age', 'note': 'Age of the RTK corrections', 'unit': 's', 'colours': 'sequential', 'decimals': 1, 'group': 'Quality'},
+                {'column': 'HRMS', 'label': 'Horizontal precision', 'unit': 'm', 'colours': 'sequential', 'decimals': 3, 'group': 'Quality'},
+                {'column': 'VRMS', 'label': 'Vertical precision', 'unit': 'm', 'colours': 'sequential', 'decimals': 3, 'group': 'Quality'},
+                {'column': 'GPS State', 'label': 'GPS state', 'note': '1 GPS, 2 DGPS, 4 RTK fixed, 5 RTK float', 'unit': '', 'colours': 'sequential', 'decimals': 0, 'group': 'Quality'}
             ]
         else:
             self.map_variables = loaded_file.pop('map_variables')
@@ -185,15 +194,21 @@ class BathymetrySiteBuilder(object):
         for map_variable in self.map_variables:
             if map_variable.get('column') is None:
                 raise ValueError('each entry of map_variables needs a "column" key, for example {"column": "Speed"}')
-            if map_variable.get('colours', 'sequential') not in ['depth', 'elevation', 'sequential']:
-                raise ValueError('the colours of the map variable "{}" must be "depth", "elevation" or "sequential"'.format(map_variable['column']))
+            if map_variable.get('colours', 'sequential') not in ['depth', 'elevation', 'sequential', 'diverging']:
+                raise ValueError('the colours of the map variable "{}" must be "depth", "elevation", "sequential" or "diverging"'.format(map_variable['column']))
+
+        if loaded_file.get('height_reference') is None:
+            print('height reference set to "as logged by the instrument". If you wish to change this default value, add height_reference to the inputs provided in the JSON file')
+            self.height_reference = 'as logged by the instrument'
+        else:
+            self.height_reference = loaded_file.pop('height_reference')
 
         if loaded_file.get('default_basemap') is None:
-            print('default basemap set to "satellite". If you wish to change this default value, add default_basemap to the inputs provided in the JSON file')
-            self.default_basemap = 'satellite'
+            print('default basemap set to "openstreetmap". If you wish to change this default value, add default_basemap to the inputs provided in the JSON file')
+            self.default_basemap = 'openstreetmap'
         else:
             self.default_basemap = loaded_file.pop('default_basemap')
-        basemap_names = ['satellite', 'street', 'topographic', 'openstreetmap', 'light', 'dark', 'ocean', 'carto-voyager', 'carto-positron']
+        basemap_names = ['openstreetmap', 'satellite', 'street', 'topographic', 'light', 'dark', 'ocean', 'carto-voyager', 'carto-positron']
         if self.default_basemap not in basemap_names:
             raise ValueError('default_basemap must be one of: {}'.format(', '.join(basemap_names)))
 
@@ -477,19 +492,32 @@ class BathymetrySiteBuilder(object):
         print('copy_raw_files is False and repository_url is not a GitHub address, so', os.path.basename(file_path), 'has no raw download link')
         return None
 
-    def map_variable_values(self, soundings, column):
+    def map_variable_values(self, soundings, column, scale=1, from_line_start=False):
         """
-        Returns the values of one map variable for the given soundings, or None when the soundings do not have it.
-        The column is either the name of a column of the raw file (for example "Speed") or the difference of two
-        columns written as "A - B" (for example "Height - Depth").
+        Returns the values of one map variable for the given soundings, multiplied by scale (for example to convert
+        radians to degrees) and, when from_line_start is True, minus the value of the first sounding (for example to
+        turn a distance counted from the start of the survey session into one counted from the start of the line), or
+        None when the soundings do not have it. The column is the name of a column of the raw
+        file (for example "Speed"), the difference of two columns written as "A - B" (for example "Height - Depth"),
+        or "Time of day", the time of each sounding in seconds after midnight of the survey date.
         """
+        values = None
         if column in soundings.columns:
-            return pd.to_numeric(soundings[column], errors='coerce')
-        if ' - ' in column:
+            values = pd.to_numeric(soundings[column], errors='coerce')
+        elif column == 'Time of day' and 'Datetime' in soundings.columns and len(soundings) > 0:
+            midnight = soundings['Datetime'].iloc[0].normalize()
+            values = (soundings['Datetime'] - midnight).dt.total_seconds()
+        elif ' - ' in column:
             first_column, second_column = [part.strip() for part in column.split(' - ', 1)]
             if first_column in soundings.columns and second_column in soundings.columns:
-                return pd.to_numeric(soundings[first_column], errors='coerce') - pd.to_numeric(soundings[second_column], errors='coerce')
-        return None
+                values = pd.to_numeric(soundings[first_column], errors='coerce') - pd.to_numeric(soundings[second_column], errors='coerce')
+        if values is not None and from_line_start:
+            first_values = values.dropna()
+            if len(first_values) > 0:
+                values = values - first_values.iloc[0]
+        if values is not None and scale != 1:
+            values = values * scale
+        return values
 
     def write_line_points(self, line_id, soundings):
         """
@@ -509,7 +537,9 @@ class BathymetrySiteBuilder(object):
         points['t'] = np.round((map_soundings['Datetime'] - line_start).dt.total_seconds().values, 2).tolist()
         points['values'] = {}
         for map_variable in self.map_variables[1:]:
-            values = self.map_variable_values(soundings=map_soundings, column=map_variable['column'])
+            if map_variable['column'] == 'Time of day':
+                continue    # the website computes it from start and t
+            values = self.map_variable_values(soundings=map_soundings, column=map_variable['column'], scale=map_variable.get('scale', 1), from_line_start=map_variable.get('from_line_start', False))
             if values is None:
                 continue
             rounded_values = np.round(values.values.astype(float), int(map_variable.get('decimals', 3)) + 1)
@@ -616,6 +646,9 @@ class BathymetrySiteBuilder(object):
                 colour_range = [float(np.percentile(values, 2)), float(np.percentile(values, 98))]
                 if colour_range[0] == colour_range[1]:
                     colour_range = [float(values.min()), float(values.max())]
+                if map_variable.get('colours') == 'diverging':
+                    half_width = max(abs(colour_range[0]), abs(colour_range[1]))
+                    colour_range = [-half_width, half_width]
                 colour_range = [round(colour_range[0], 3), round(colour_range[1], 3)]
             else:
                 colour_range = [0, 1]
@@ -626,6 +659,8 @@ class BathymetrySiteBuilder(object):
             site_variable['colours'] = map_variable.get('colours', 'sequential')
             site_variable['decimals'] = int(map_variable.get('decimals', 3))
             site_variable['note'] = map_variable.get('note', '')
+            site_variable['group'] = map_variable.get('group', '')
+            site_variable['format'] = map_variable.get('format', '')
             site_variable['range'] = colour_range
             site_variables.append(site_variable)
         return site_variables
@@ -663,6 +698,7 @@ class BathymetrySiteBuilder(object):
         settings['repository_url'] = self.repository_url
         settings['time_reference'] = self.time_reference
         settings['depth_reference'] = self.depth_reference
+        settings['height_reference'] = self.height_reference
         settings['depth_colour_range'] = depth_range
         settings['map_variables'] = self.site_map_variables(all_values=all_values)
         settings['default_basemap'] = self.default_basemap
@@ -705,7 +741,7 @@ class BathymetrySiteBuilder(object):
                                                        raw_link=raw_link))
             all_depths.extend(soundings['Depth'].tolist())
             for map_variable in self.map_variables:
-                values = self.map_variable_values(soundings=soundings, column=map_variable['column'])
+                values = self.map_variable_values(soundings=soundings, column=map_variable['column'], scale=map_variable.get('scale', 1), from_line_start=map_variable.get('from_line_start', False))
                 if values is not None:
                     all_values.setdefault(map_variable['column'], []).extend(values.tolist())
             print('location:', line_metadata.get('location', '(none given)'), '| platform:', line_metadata.get('platform'), '| sensor:', line_metadata.get('sensor'))
