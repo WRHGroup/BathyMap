@@ -233,10 +233,13 @@ a { color: inherit; }
 .collapse {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  flex: 1;
-  min-width: 0;
-  padding: 0.15rem 0;
+  justify-content: center;
+  flex: none;
+  width: 1.3rem;
+  height: 1.3rem;
+  margin: 0 -0.35rem 0 -0.2rem;
+  padding: 0;
+  border-radius: 3px;
   border: 0;
   background: none;
   color: inherit;
@@ -244,7 +247,24 @@ a { color: inherit; }
   text-align: left;
   cursor: pointer;
 }
-.collapse:focus-visible, .text-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.collapse:hover { background: var(--surface); }
+.collapse:hover .chev { color: var(--ink); }
+.zoom-to {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  padding: 0.1rem 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.zoom-to.location-title { align-items: center; gap: 0.5rem; }
+.zoom-to.group-title { flex-direction: column; }
+.zoom-to:hover h3, .zoom-to:hover .location-name { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.zoom-to:focus-visible, .collapse:focus-visible, .text-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 .chev { width: 0.7rem; height: 0.7rem; flex: none; color: var(--muted); transform: rotate(90deg); transition: transform 0.12s ease; }
 .collapse[aria-expanded="false"] .chev { transform: none; }
 .location { display: flex; flex-direction: column; gap: 0.6rem; }
@@ -266,7 +286,6 @@ a { color: inherit; }
   padding: 0 0.4rem 0.3rem;
   border-bottom: 1px solid var(--rule);
 }
-.group-title { display: flex; flex-direction: column; min-width: 0; }
 .group-head h3 { font-size: 1rem; font-weight: 600; }
 .group-head .note { font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .line-row {

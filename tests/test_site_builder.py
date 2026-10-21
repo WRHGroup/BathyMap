@@ -142,7 +142,7 @@ def test_raw_file_link_to_repository():
 def test_map_variables():
     """
     Checks that the map points hold the extra map variables, that "Height - Depth" is computed from the two columns,
-    and that the index lists the variables with depth first and the satellite basemap as the default.
+    and that the index lists the variables with depth first and OpenStreetMap as the default basemap.
     """
     SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
     SiteModel.setup()
@@ -150,12 +150,22 @@ def test_map_variables():
     columns = [map_variable['column'] for map_variable in index['site']['map_variables']]
     assert(columns[0] == 'Depth')
     assert('Height - Depth' in columns)
-    assert(index['site']['default_basemap'] == 'satellite')
+    assert(index['site']['default_basemap'] == 'openstreetmap')
     with open(os.path.join(SiteModel.output_directory, index['lines'][0]['files']['points'])) as f:
         points = json.load(f)
     assert(len(points['values']['Height']) == len(points['depth']))
     difference = points['values']['Height'][0] - points['depth'][0]
     assert(abs(points['values']['Height - Depth'][0] - difference) < 0.001)
+    assert('Time of day' not in points['values'])
+    soundings = SiteModel.clean_soundings(soundings=SiteModel.read_dep_file(os.path.join('tests', 'files', 'data', 'L0001_sample.dep'))[1], file_path='L0001_sample.dep')
+    roll_in_degrees = SiteModel.map_variable_values(soundings=soundings, column='Roll', scale=57.29578)
+    assert(abs(roll_in_degrees.iloc[0] - soundings['Roll'].iloc[0] * 57.29578) < 1e-9)
+    distance = SiteModel.map_variable_values(soundings=soundings, column='Trail Distance', from_line_start=True)
+    assert(distance.iloc[0] == 0)
+    assert(abs(distance.iloc[-1] - (soundings['Trail Distance'].iloc[-1] - soundings['Trail Distance'].iloc[0])) < 1e-9)
+    time_of_day = SiteModel.map_variable_values(soundings=soundings, column='Time of day')
+    first_time = soundings['Datetime'].iloc[0]
+    assert(abs(time_of_day.iloc[0] - (first_time.hour * 3600 + first_time.minute * 60 + first_time.second + first_time.microsecond / 1e6)) < 1e-6)
 
 
 def test_location_metadata():

@@ -7,13 +7,13 @@
   /* Basemaps in the order of the layers menu. key is the name used for default_basemap in the site configuration;
      dark marks the ones on which tracks and soundings are outlined in white. */
   var BASEMAPS = [
+    { key: 'openstreetmap', name: 'OpenStreetMap', osm: true },
     { key: 'satellite', name: 'Satellite', esri: 'World_Imagery', maxNativeZoom: 19, dark: true,
       attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community' },
     { key: 'street', name: 'Street map', esri: 'World_Street_Map', maxNativeZoom: 19,
       attribution: 'Map &copy; Esri, HERE, Garmin, USGS, NRCan, &copy; OpenStreetMap contributors, and the GIS User Community' },
     { key: 'topographic', name: 'Topographic', esri: 'World_Topo_Map', maxNativeZoom: 19,
       attribution: 'Map &copy; Esri, HERE, Garmin, USGS, NRCan, GEBCO, &copy; OpenStreetMap contributors, and the GIS User Community' },
-    { key: 'openstreetmap', name: 'OpenStreetMap', osm: true },
     { key: 'light', name: 'Light grey', esri: 'Canvas/World_Light_Gray_Base', maxNativeZoom: 16,
       attribution: 'Map &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community' },
     { key: 'dark', name: 'Dark grey', esri: 'Canvas/World_Dark_Gray_Base', maxNativeZoom: 16, dark: true,
@@ -23,7 +23,7 @@
     { key: 'carto-voyager', name: 'CARTO Voyager', carto: 'voyager' },
     { key: 'carto-positron', name: 'CARTO Positron', carto: 'light_all' }
   ];
-  function baseKey(k) { return k || 'satellite'; }
+  function baseKey(k) { return k || 'openstreetmap'; }
   function isDarkBase() { return BASEMAPS.some(function (b) { return b.name === state.base && b.dark; }); }
   var RAMP = ['#ffffd9', '#edf8b1', '#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0', '#225ea8', '#253494', '#081d58'];
   var GPS_LABELS = { '0': 'Invalid', '1': 'GPS', '2': 'DGPS', '3': 'PPS', '4': 'RTK fixed', '5': 'RTK float', '6': 'Estimated' };
@@ -101,7 +101,9 @@
   var RAMPS = {
     depth: RAMP,
     elevation: RAMP.slice().reverse(),
-    sequential: ['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725']
+    sequential: ['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725'],
+    // Blue below zero, white at zero, red above: for signed values such as roll and pitch.
+    diverging: ['#2166ac', '#4393c3', '#92c5de', '#d1e5f0', '#f7f7f7', '#fddbc7', '#f4a582', '#d6604d', '#b2182b']
   };
   var MISSING_COLOUR = '#9aa5ad';
   function hexToRgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
@@ -129,12 +131,24 @@
   function currentVariable() { return mapVariables()[state.variable] || mapVariables()[0]; }
   function valueAt(p, i, variable) {
     if (variable.column === 'Depth') return p.depth[i];
+    if (variable.column === 'Time of day') {   // seconds after midnight, from the line start and each sounding's offset
+      if (p._startOfDay == null) {
+        var m = p.start.match(/T(\d+):(\d+):(\d+(?:\.\d+)?)/);
+        p._startOfDay = (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]);
+      }
+      return p._startOfDay + p.t[i];
+    }
     var arr = p.values && p.values[variable.column];
     return arr ? arr[i] : null;
   }
+  function fmtClock(seconds, withSeconds) {
+    var x = ((Math.round(seconds) % 86400) + 86400) % 86400;
+    return pad(Math.floor(x / 3600)) + ':' + pad(Math.floor(x / 60) % 60) + (withSeconds ? ':' + pad(x % 60) : '');
+  }
   function fmtValue(v, variable) {
     if (v == null || isNaN(v)) return 'no value';
-    return Number(v).toFixed(variable.decimals) + (variable.unit ? ' ' + variable.unit : '');
+    if (variable.format === 'time') return fmtClock(v, true);
+    return Number(v).toFixed(variable.decimals) + (variable.unit ? (variable.unit === '°' ? '' : ' ') + variable.unit : '');
   }
 
   function drawLegend() {
@@ -148,7 +162,7 @@
     if (r[1] - r[0] < 0.1 && digits < 3) digits = 3;
     var ticks = [r[0], (r[0] + r[1]) / 2, r[1]];
     el('legend-ticks').innerHTML = ticks.map(function (t, i) {
-      var label = Number(t).toFixed(digits);
+      var label = variable.format === 'time' ? fmtClock(t, r[1] - r[0] < 600) : Number(t).toFixed(digits);
       if (i === 0) label = '≤ ' + label;
       if (i === 2) label = '≥ ' + label;
       return '<span>' + label + '</span>';
@@ -168,9 +182,19 @@
       var saved = localStorage.getItem('bathymap-variable');
       vars.forEach(function (v, i) { if (v.column === saved) state.variable = i; });
     } catch (e) { /* storage unavailable */ }
-    select.innerHTML = vars.map(function (v, i) {
-      return '<option value="' + i + '"' + (i === state.variable ? ' selected' : '') + '>' + escapeHtml(v.label) + '</option>';
-    }).join('');
+    // Options are grouped under their "group" (for example Bathymetry, Survey, Quality) when the variables have one.
+    var html = '', group = null;
+    vars.forEach(function (v, i) {
+      var g = v.group || '';
+      if (g !== group) {
+        if (group) html += '</optgroup>';
+        if (g) html += '<optgroup label="' + escapeHtml(g) + '">';
+        group = g;
+      }
+      html += '<option value="' + i + '"' + (i === state.variable ? ' selected' : '') + '>' + escapeHtml(v.label) + '</option>';
+    });
+    if (group) html += '</optgroup>';
+    select.innerHTML = html;
     select.disabled = vars.length < 2;
     try { if (localStorage.getItem('bathymap-scale') === 'all') state.scaleMode = 'all'; } catch (e) { /* storage unavailable */ }
     el('scale-mode').addEventListener('click', function (e) {
@@ -199,7 +223,7 @@
     map = L.map('map', { zoomControl: true, preferCanvas: true, maxZoom: 22 });
     renderer = L.canvas({ padding: 0.3 });
 
-    /* Basemaps. None of these needs an API key: Esri's public tile services and the OpenStreetMap server. CARTO's maps
+    /* Basemaps. None of these needs an API key: the OpenStreetMap server (the default) and Esri's public tile services. CARTO's maps
        are added only when the site configuration holds a CARTO key (CARTO has required one since September 2026).
        maxNativeZoom is the last zoom level each service has tiles for; closer in, its tiles are enlarged. Tiles are not
        requested during the zoom animation, and a ring of tiles around the view is kept so short pans need no requests. */
@@ -230,7 +254,7 @@
     map.getPane('overlayLabels').style.pointerEvents = 'none';
     var wanted = baseKey(state.site.default_basemap), chosen = null;
     BASEMAPS.forEach(function (b) { if (b.key === wanted && bases[b.name]) chosen = b.name; });
-    if (!chosen) chosen = 'Satellite';
+    if (!chosen) chosen = 'OpenStreetMap';
     try { if (bases[localStorage.getItem('bathymap-base')]) chosen = localStorage.getItem('bathymap-base'); } catch (e) { /* storage unavailable */ }
     state.base = chosen;
     bases[chosen].addTo(map);
@@ -365,6 +389,10 @@
         next = [percentile(values, 0.02), percentile(values, 0.98)];
         if (next[1] - next[0] < 1e-6) next = [values[0], values[values.length - 1]];
         if (next[1] - next[0] < 1e-6) next = [next[0] - 0.01, next[1] + 0.01];
+        if (variable.colours === 'diverging') {   // keep zero in the middle (white)
+          var half = Math.max(Math.abs(next[0]), Math.abs(next[1]));
+          next = [-half, half];
+        }
       }
       state.viewCount = values.length;
     }
@@ -895,6 +923,7 @@
     return ' data-ids="' + escapeHtml(lines.map(function (l) { return l.id; }).join(' ')) + '" data-state="' +
       (shown === 0 ? 'none' : shown === lines.length ? 'all' : 'mixed') + '"' + (shown > 0 ? ' checked' : '');
   }
+  function idsAttr(lines) { return ' data-ids="' + escapeHtml(lines.map(function (l) { return l.id; }).join(' ')) + '"'; }
   function lineRow(line) {
     var hidden = !!state.hidden[line.id];
     return '<div class="line-row' + (line.id === state.selected ? ' selected' : '') + (hidden ? ' hidden-line' : '') + '" data-id="' + escapeHtml(line.id) + '" role="button" tabindex="0" aria-pressed="' + (line.id === state.selected) + '">' +
@@ -930,9 +959,10 @@
         var pts = lines.reduce(function (n, l) { return n + l.points; }, 0);
         inner += '<div class="group' + (dayOpen ? '' : ' collapsed') + '"><div class="group-head">' +
           '<input type="checkbox" class="set-check" aria-label="Show all lines of ' + escapeHtml(fmtDate(g.date)) + ' on the map"' + setCheckbox(lines) + '>' +
-          '<button type="button" class="collapse" data-key="' + escapeHtml(dayKey) + '" aria-expanded="' + dayOpen + '">' + CHEVRON +
-          '<span class="group-title"><h3>' + escapeHtml(fmtDate(g.date)) + '</h3>' +
-          '<span class="note">' + escapeHtml(g.area) + ' · ' + lines.length + (lines.length === 1 ? ' line · ' : ' lines · ') + fmtNum(pts) + ' soundings</span></span></button></div>';
+          '<button type="button" class="collapse" data-key="' + escapeHtml(dayKey) + '" aria-expanded="' + dayOpen + '" aria-label="' + (dayOpen ? 'Collapse ' : 'Expand ') + escapeHtml(fmtDate(g.date)) + '">' + CHEVRON + '</button>' +
+          '<button type="button" class="zoom-to group-title" data-key="' + escapeHtml(dayKey) + '"' + idsAttr(lines) + ' title="Zoom to this survey day">' +
+          '<h3>' + escapeHtml(fmtDate(g.date)) + '</h3>' +
+          '<span class="note">' + escapeHtml(g.area) + ' · ' + lines.length + (lines.length === 1 ? ' line · ' : ' lines · ') + fmtNum(pts) + ' soundings</span></button></div>';
         if (dayOpen) inner += '<div class="group-body">' + lines.map(lineRow).join('') + '</div>';
         inner += '</div>';
       });
@@ -940,7 +970,8 @@
       var name = sec.location || 'No location given';
       html += '<section class="location' + (locOpen ? '' : ' collapsed') + '"><div class="location-head">' +
         '<input type="checkbox" class="set-check" aria-label="Show all lines of ' + escapeHtml(name) + ' on the map"' + setCheckbox(sec.lines) + '>' +
-        '<button type="button" class="collapse" data-key="' + escapeHtml(locKey) + '" aria-expanded="' + locOpen + '">' + CHEVRON +
+        '<button type="button" class="collapse" data-key="' + escapeHtml(locKey) + '" aria-expanded="' + locOpen + '" aria-label="' + (locOpen ? 'Collapse ' : 'Expand ') + escapeHtml(name) + '">' + CHEVRON + '</button>' +
+        '<button type="button" class="zoom-to location-title" data-key="' + escapeHtml(locKey) + '"' + idsAttr(sec.lines) + ' title="Zoom to ' + escapeHtml(name) + '">' +
         '<span class="location-name">' + escapeHtml(name) + '</span><span class="location-count">' + sec.lines.length + (sec.lines.length === 1 ? ' line' : ' lines') + '</span></button></div>' +
         (locOpen ? '<div class="location-body">' + inner + '</div>' : '') + '</section>';
     });
@@ -1056,13 +1087,33 @@
     el('expand-all').addEventListener('click', function () { state.collapsed = {}; renderList(); });
     el('line-list').addEventListener('click', function (e) {
       if (e.target.matches('.set-check')) { setMany(e.target); return; }
+      // Clicking the name of a location or survey day zooms to its lines and opens the section.
+      var zoomTo = e.target.closest('.zoom-to');
+      if (zoomTo) {
+        var bounds = null;
+        zoomTo.getAttribute('data-ids').split(' ').forEach(function (id) {
+          var line = state.byId[id];
+          if (!line) return;
+          if (bounds) bounds.extend(bboxBounds(line.bbox)); else bounds = bboxBounds(line.bbox);
+        });
+        if (bounds) fitView(bounds);
+        var zoomKey = zoomTo.getAttribute('data-key');
+        if (state.collapsed[zoomKey]) {
+          delete state.collapsed[zoomKey];
+          renderList();
+          var same = el('line-list').querySelector('.zoom-to[data-key="' + (window.CSS && CSS.escape ? CSS.escape(zoomKey) : zoomKey) + '"]');
+          if (same && e.detail === 0) same.focus();   // keep keyboard focus; a mouse click needs no focus ring
+        }
+        if (window.matchMedia('(max-width: 760px)').matches) togglePanel(false);
+        return;
+      }
       var collapse = e.target.closest('.collapse');
       if (collapse) {
         var key = collapse.getAttribute('data-key');
         if (state.collapsed[key]) delete state.collapsed[key]; else state.collapsed[key] = true;
         renderList();
         var again = el('line-list').querySelector('.collapse[data-key="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]');
-        if (again) again.focus();
+        if (again && e.detail === 0) again.focus();
         return;
       }
       var row = e.target.closest('.line-row');
@@ -1119,6 +1170,7 @@
     el('site-description').hidden = !s.description;
     el('depth-reference').textContent = s.depth_reference;
     el('time-reference').textContent = s.time_reference;
+    if (s.height_reference) el('height-reference').textContent = s.height_reference;
     if (s.licence) { el('licence').textContent = s.licence; el('licence').hidden = false; el('licence-label').hidden = false; }
     if (s.contact || s.organisation) {
       el('contact').textContent = [s.organisation, s.contact].filter(Boolean).join(' · ');
