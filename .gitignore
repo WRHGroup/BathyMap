@@ -1,8 +1,8 @@
-# built website (GitHub Actions builds it on every push)
-_site/
+# docs/ is the published website: it is built with "BathyMap build" and must be committed.
 tests/files/_test_site/
 __pycache__/
 *.egg-info/
 build/
 .pytest_cache/
 .DS_Store
+Thumbs.db

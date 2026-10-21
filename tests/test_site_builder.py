@@ -122,3 +122,18 @@ def test_execute():
 
     #Test that a second build replaces the first one without complaining
     SiteModel.execute()
+
+
+def test_raw_file_link_to_repository():
+    #Test that the raw download links point to the data folder of the repository when the raw files are not copied
+    SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
+    SiteModel.setup()
+    SiteModel.copy_raw_files = False
+    SiteModel.repository_url = 'https://github.com/example-group/bathymap'
+
+    data_files = SiteModel.find_data_files()
+    raw_link = SiteModel.raw_file_link(data_files[0])
+    assert(raw_link == 'https://raw.githubusercontent.com/example-group/bathymap/main/data/L0001_sample.dep')
+
+    SiteModel.repository_url = ''
+    assert(SiteModel.raw_file_link(data_files[0]) is None)
