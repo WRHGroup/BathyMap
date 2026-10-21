@@ -1,0 +1,9 @@
+{
+    "site_title": "Test bathymetry site",
+    "data_directory": "data",
+    "site_template_directory": "../../site",
+    "output_directory": "_test_site",
+    "max_map_points_per_line": 20,
+    "max_track_points_per_line": 10,
+    "survey_metadata": {"platform": "Overridden by the folder metadata file", "operator": "Test operator"}
+}

@@ -1,0 +1,20 @@
+{
+    "site_title": "BathyMap",
+    "site_description": "Raw bathymetry survey data. Explore each survey line on the map, read the depth, date and time of individual soundings, and download the original files, CSV exports, or any area you select.",
+    "organisation": "",
+    "contact": "",
+    "licence": "",
+    "data_directory": "data",
+    "site_template_directory": "site",
+    "output_directory": "_site",
+    "file_extensions": [".dep"],
+    "accepted_gps_states": [],
+    "max_map_points_per_line": 3000,
+    "max_track_points_per_line": 200,
+    "copy_raw_files": true,
+    "write_combined_csv": true,
+    "survey_metadata": {},
+    "metadata_file_name": "metadata.json",
+    "time_reference": "as logged by the instrument",
+    "depth_reference": "as logged by the instrument"
+}
