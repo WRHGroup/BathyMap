@@ -1,0 +1,6 @@
+{
+    "platform": "CHCNAV Apache 4",
+    "platform_type": "Uncrewed surface vessel (USV)",
+    "sensor": "Apache 4 single-beam echosounder",
+    "location": "Lake Ontario"
+}

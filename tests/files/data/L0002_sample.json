@@ -1,4 +1,5 @@
 {
     "sensor": "Second echosounder",
-    "notes": "Metadata for this file only"
+    "notes": "Metadata for this file only",
+    "location": "Test pond"
 }

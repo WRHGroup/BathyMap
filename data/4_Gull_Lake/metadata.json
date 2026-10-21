@@ -1,5 +1,6 @@
 {
     "platform": "CHCNAV Apache 4",
     "platform_type": "Uncrewed surface vessel (USV)",
-    "sensor": "Apache 4 single-beam echosounder"
+    "sensor": "Apache 4 single-beam echosounder",
+    "location": "Gull Lake"
 }
