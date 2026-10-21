@@ -37,7 +37,7 @@ def test_read_dep_file():
     SiteModel.setup()
 
     data_files = SiteModel.find_data_files()
-    assert(len(data_files) == 1)
+    assert(len(data_files) == 2)
     metadata, soundings = SiteModel.read_dep_file(data_files[0])
     assert(type(metadata) == dict)
     assert(metadata['Date'] == '2026-10-16')
@@ -61,6 +61,13 @@ def test_line_survey_metadata():
     assert(line_metadata['platform'] == 'Test platform')
     assert(line_metadata['sensor'] == 'Test single-beam echosounder')
     assert(line_metadata['operator'] == 'Test operator')
+
+    #Test that a JSON file with the same name as the data file overrides the folder metadata for that file only
+    metadata, soundings = SiteModel.read_dep_file(data_files[1])
+    line_metadata = SiteModel.line_survey_metadata(file_path=data_files[1], file_metadata=metadata)
+    assert(line_metadata['platform'] == 'Test platform')
+    assert(line_metadata['sensor'] == 'Second echosounder')
+    assert(line_metadata['notes'] == 'Metadata for this file only')
 
     #Test that the instrument model in the file header is used when no platform is given
     SiteModel.survey_metadata = {}
@@ -87,7 +94,7 @@ def test_execute():
     SiteModel.setup()
     index = SiteModel.execute()
 
-    assert(len(index['lines']) == 1)
+    assert(len(index['lines']) == 2)
     line = index['lines'][0]
     assert(line['points'] == 50)
     assert(line['map_points'] <= 21)
@@ -115,3 +122,18 @@ def test_execute():
 
     #Test that a second build replaces the first one without complaining
     SiteModel.execute()
+
+
+def test_raw_file_link_to_repository():
+    #Test that the raw download links point to the data folder of the repository when the raw files are not copied
+    SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
+    SiteModel.setup()
+    SiteModel.copy_raw_files = False
+    SiteModel.repository_url = 'https://github.com/example-group/bathymap'
+
+    data_files = SiteModel.find_data_files()
+    raw_link = SiteModel.raw_file_link(data_files[0])
+    assert(raw_link == 'https://raw.githubusercontent.com/example-group/bathymap/main/data/L0001_sample.dep')
+
+    SiteModel.repository_url = ''
+    assert(SiteModel.raw_file_link(data_files[0]) is None)

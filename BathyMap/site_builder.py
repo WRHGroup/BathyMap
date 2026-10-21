@@ -55,8 +55,8 @@ class BathymetrySiteBuilder(object):
             self.site_template_directory = os.path.normpath(os.path.join(self.json_file_directory, loaded_file.pop('site_template_directory')))
 
         if loaded_file.get('output_directory') is None:
-            print('output directory set to "_site". If you wish to change this default value, add output_directory to the inputs provided in the JSON file')
-            self.output_directory = os.path.normpath(os.path.join(self.json_file_directory, '_site'))
+            print('output directory set to "docs". If you wish to change this default value, add output_directory to the inputs provided in the JSON file')
+            self.output_directory = os.path.normpath(os.path.join(self.json_file_directory, 'docs'))
         else:
             self.output_directory = os.path.normpath(os.path.join(self.json_file_directory, loaded_file.pop('output_directory')))
 
@@ -91,13 +91,16 @@ class BathymetrySiteBuilder(object):
             self.licence = loaded_file.pop('licence')
 
         if loaded_file.get('repository_url') is None:
-            if os.environ.get('GITHUB_REPOSITORY') is not None:
-                self.repository_url = os.environ.get('GITHUB_SERVER_URL', 'https://github.com') + '/' + os.environ.get('GITHUB_REPOSITORY')
-            else:
-                self.repository_url = ''
-            print('repository url set to "{}" (read from GitHub Actions when available). If you wish to change this default value, add repository_url to the inputs provided in the JSON file'.format(self.repository_url))
+            print('repository url set to an empty string. If you wish to change this default value, add repository_url to the inputs provided in the JSON file')
+            self.repository_url = ''
         else:
-            self.repository_url = loaded_file.pop('repository_url')
+            self.repository_url = loaded_file.pop('repository_url').rstrip('/')
+
+        if loaded_file.get('repository_branch') is None:
+            print('repository branch set to "main". If you wish to change this default value, add repository_branch to the inputs provided in the JSON file')
+            self.repository_branch = 'main'
+        else:
+            self.repository_branch = loaded_file.pop('repository_branch')
 
         if loaded_file.get('file_extensions') is None:
             print('file extensions set to [".dep"]. If you wish to change this default value, add file_extensions to the inputs provided in the JSON file')
@@ -216,8 +219,8 @@ class BathymetrySiteBuilder(object):
         Returns the survey metadata of one line (platform, sensor and any other entries, such as operator or project).
         The entries are merged in this order, each one overriding the previous: survey_metadata in the JSON-based
         document, then every metadata file (self.metadata_file_name) found from the top of the data directory down to the
-        folder of the line. When no platform is given, the instrument model recorded in the file header (Antenna Type) is
-        used.
+        folder of the line, and finally a JSON file with the same name as the line file (for example L0001.json next to
+        L0001.dep). When no platform is given, the instrument model recorded in the file header (Antenna Type) is used.
         """
         line_metadata = {}
         for key, value in self.survey_metadata.items():
@@ -235,6 +238,13 @@ class BathymetrySiteBuilder(object):
                     folder_metadata = json.load(f)
                 for key, value in folder_metadata.items():
                     line_metadata[key] = value
+
+        file_metadata_path = os.path.splitext(file_path)[0] + '.json'
+        if os.path.isfile(file_metadata_path) and os.path.basename(file_metadata_path) != self.metadata_file_name:
+            with open(file_metadata_path, "r", encoding="utf-8") as f:
+                own_metadata = json.load(f)
+            for key, value in own_metadata.items():
+                line_metadata[key] = value
 
         if line_metadata.get('platform') is None or line_metadata.get('platform') == '':
             line_metadata['platform'] = file_metadata.get('Antenna Type', '')
@@ -375,8 +385,8 @@ class BathymetrySiteBuilder(object):
     def raw_file_link(self, file_path):
         """
         Copies the raw file into the website when self.copy_raw_files is True and returns its relative link. Otherwise
-        returns a link to the file in the GitHub repository (raw.githubusercontent.com), or None when the repository is
-        not known.
+        returns a link to the file in the data folder of the GitHub repository (raw.githubusercontent.com, built from
+        self.repository_url and self.repository_branch), or None when repository_url is not a GitHub address.
         """
         relative_path = os.path.relpath(file_path, self.data_directory).replace(os.sep, '/')
         if self.copy_raw_files:
@@ -384,9 +394,13 @@ class BathymetrySiteBuilder(object):
             os.makedirs(os.path.dirname(destination), exist_ok=True)
             shutil.copy2(file_path, destination)
             return 'data/raw/' + relative_path
-        if os.environ.get('GITHUB_REPOSITORY') is not None and os.environ.get('GITHUB_SHA') is not None:
+        if self.repository_url.startswith('https://github.com/'):
+            owner_and_repository = self.repository_url[len('https://github.com/'):]
+            if owner_and_repository.endswith('.git'):
+                owner_and_repository = owner_and_repository[:-4]
             data_folder = os.path.relpath(self.data_directory, self.json_file_directory).replace(os.sep, '/')
-            return 'https://raw.githubusercontent.com/' + os.environ.get('GITHUB_REPOSITORY') + '/' + os.environ.get('GITHUB_SHA') + '/' + data_folder + '/' + relative_path
+            return 'https://raw.githubusercontent.com/' + owner_and_repository + '/' + self.repository_branch + '/' + data_folder + '/' + relative_path
+        print('copy_raw_files is False and repository_url is not a GitHub address, so', os.path.basename(file_path), 'has no raw download link')
         return None
 
     def write_line_points(self, line_id, soundings):
@@ -526,7 +540,7 @@ class BathymetrySiteBuilder(object):
         """
         Builds the website: prepares the output directory, reads and cleans every raw file found in the data directory,
         writes the map points, CSV files and raw copies of each line, and finally writes the index (data/index.json) that
-        the website reads.
+        the website reads. Ends with a reminder to commit and push the output directory.
         """
         t0 = time.time()
         data_files = self.find_data_files()
@@ -563,4 +577,5 @@ class BathymetrySiteBuilder(object):
         with open(fn, "w") as f:
             json.dump(index, f, separators=(',', ':'))
         print('website written to', self.output_directory, 'with', len(line_records), 'lines in', round((time.time() - t0), 1), 'seconds')
+        print('commit and push the data and the', os.path.basename(self.output_directory), 'folder to publish the update')
         return index
