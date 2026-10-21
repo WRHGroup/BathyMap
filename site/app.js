@@ -563,8 +563,9 @@
   function matchesFilter(line) {
     if (!state.filter) return true;
     var md = line.metadata || {};
-    var hay = (line.name + ' ' + line.line + ' ' + line.area + ' ' + line.date + ' ' + fmtDate(line.date) + ' ' + line.folder + ' ' +
-      (md.platform || '') + ' ' + (md.platform_type || '') + ' ' + (md.sensor || '')).toLowerCase();
+    var hay = line.name + ' ' + line.line + ' ' + line.area + ' ' + line.date + ' ' + fmtDate(line.date) + ' ' + line.folder;
+    Object.keys(md).forEach(function (k) { hay += ' ' + (typeof md[k] === 'object' ? JSON.stringify(md[k]) : md[k]); });
+    hay = hay.toLowerCase();
     return hay.indexOf(state.filter) !== -1;
   }
   function depthBar(line) {

@@ -216,8 +216,8 @@ class BathymetrySiteBuilder(object):
         Returns the survey metadata of one line (platform, sensor and any other entries, such as operator or project).
         The entries are merged in this order, each one overriding the previous: survey_metadata in the JSON-based
         document, then every metadata file (self.metadata_file_name) found from the top of the data directory down to the
-        folder of the line. When no platform is given, the instrument model recorded in the file header (Antenna Type) is
-        used.
+        folder of the line, and finally a JSON file with the same name as the line file (for example L0001.json next to
+        L0001.dep). When no platform is given, the instrument model recorded in the file header (Antenna Type) is used.
         """
         line_metadata = {}
         for key, value in self.survey_metadata.items():
@@ -235,6 +235,13 @@ class BathymetrySiteBuilder(object):
                     folder_metadata = json.load(f)
                 for key, value in folder_metadata.items():
                     line_metadata[key] = value
+
+        file_metadata_path = os.path.splitext(file_path)[0] + '.json'
+        if os.path.isfile(file_metadata_path) and os.path.basename(file_metadata_path) != self.metadata_file_name:
+            with open(file_metadata_path, "r", encoding="utf-8") as f:
+                own_metadata = json.load(f)
+            for key, value in own_metadata.items():
+                line_metadata[key] = value
 
         if line_metadata.get('platform') is None or line_metadata.get('platform') == '':
             line_metadata['platform'] = file_metadata.get('Antenna Type', '')

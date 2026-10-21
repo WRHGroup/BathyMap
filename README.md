@@ -17,20 +17,51 @@ The website lets visitors:
 
 ## Adding new data
 
-1. Copy the `.dep` files exported from the instrument into `data/`. Sub-folders are fine and are a good way to keep
-   things tidy, for example one folder per survey day: `data/2026-10-16/L0001_2026-10-16-00-24-42.dep`.
-2. If the data comes from a platform or sensor that is not yet described, add a `metadata.json` to its folder (see
-   below).
+### Recommended folder structure
+
+Keep one folder per survey (usually one per survey day), named with the date first so folders sort in time order, and
+drop the raw files in unchanged:
+
+```
+data/
+├── metadata.json                         defaults for all data (platform, sensor)
+├── 2026-10-16/
+│   ├── L0001_2026-10-16-00-24-42.dep
+│   └── L0002_2026-10-16-00-52-33.dep
+└── 2026-11-03_credit-river/
+    ├── metadata.json                     overrides for this survey only
+    ├── L0001_2026-11-03-14-02-10.dep
+    ├── L0002_2026-11-03-14-40-55.dep
+    └── L0002_2026-11-03-14-40-55.json    overrides for this one file only
+```
+
+1. Create the survey folder and copy the instrument's `.dep` files into it. Keep the original file names.
+2. If the survey's platform or sensor differs from the defaults, add a `metadata.json` to the folder. If a single
+   file differs, add a `.json` with the same name as that file (see below).
 3. Commit and push to `main`.
 4. Wait a minute or two. The **Actions** tab shows the build; when it turns green, the map is up to date.
 
-Nothing else needs to change. Files are found by extension, so the folder layout is up to you.
+A few rules keep things working:
 
-## Describing the platform and sensor
+- Use lowercase letters, digits and hyphens in folder names; avoid spaces.
+- Don't rename or move a file once it is published. The folder and file name form the line's identifier, which is used
+  in shared links (`…/#2026-10-16__L0001_2026-10-16-00-24-42`) and in the download file names.
+- The website groups lines by the survey date and area name recorded inside each file, not by folder, so the folders
+  are only for keeping the repository tidy. Any depth of sub-folders works.
 
-Each line is labelled with the platform and sensor that collected it. They are read from `metadata.json` files in the
-data folder. A file applies to its own folder and every folder inside it, and a file deeper down overrides the entries
-of one higher up. The repository starts with `data/metadata.json`, which describes the current data:
+## Describing the platform, sensor and other metadata
+
+Each line is labelled with the platform and sensor that collected it, plus any other entries you want to record. They
+come from JSON files in the data folder, merged from the general to the specific. A later level overrides only the
+entries it sets and inherits the rest:
+
+1. `survey_metadata` in `1_site_config.json` (empty by default).
+2. `metadata.json` files, from the top of `data/` down to the file's own folder. Each applies to its folder and every
+   folder inside it.
+3. A `.json` file with the same name as the data file, for example `L0002_2026-11-03-14-40-55.json` next to
+   `L0002_2026-11-03-14-40-55.dep`. It applies to that file only.
+
+The repository starts with `data/metadata.json`, which describes the current data:
 
 ```json
 {
@@ -40,11 +71,21 @@ of one higher up. The repository starts with `data/metadata.json`, which describ
 }
 ```
 
-When data from another platform arrives, put it in its own folder with its own `metadata.json`, for example
-`data/kayak-2027/metadata.json`. `platform`, `platform_type` and `sensor` have their own rows in the line details;
-any other entry you add (for example `operator`, `project` or `notes`) is shown there too. Platform and sensor are also
-written as columns in every CSV download, so exported data keeps its provenance. If no platform is given, the instrument
-model recorded in the file header is used.
+A per-file JSON only needs the entries that differ. For example, a line run with a different echosounder and a note:
+
+```json
+{
+    "sensor": "Second single-beam echosounder",
+    "notes": "Transducer remounted after line 1"
+}
+```
+
+That line then shows platform `CHCNAV Apache 4` (from the folder or `data/` level) and the new sensor and notes.
+
+`platform`, `platform_type` and `sensor` have their own rows in the line details; any other entry (for example
+`operator`, `project`, `weather` or `notes`) is shown there too and can be searched with the line filter. Platform and
+sensor are also written as columns in every CSV download, so exported data keeps its provenance. If no platform is
+given at any level, the instrument model recorded in the file header is used.
 
 ## One-time setup on GitHub
 
