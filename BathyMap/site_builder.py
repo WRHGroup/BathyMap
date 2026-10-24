@@ -9,6 +9,9 @@ import shutil
 import datetime
 import numpy as np
 import pandas as pd
+from scipy.interpolate import griddata
+from scipy.spatial import cKDTree
+from pyproj import Transformer
 import logging
 logger = logging.getLogger(__name__)
 
@@ -226,6 +229,32 @@ class BathymetrySiteBuilder(object):
         else:
             self.start_with_list_collapsed = loaded_file.pop('start_with_list_collapsed')
 
+        if loaded_file.get('interpolate_bed') is None:
+            print('interpolate bed set to True (each survey day gets a 3D view of the interpolated bed). If you wish to change this default value, add interpolate_bed to the inputs provided in the JSON file')
+            self.interpolate_bed = True
+        else:
+            self.interpolate_bed = loaded_file.pop('interpolate_bed')
+
+        if loaded_file.get('bed_grid_spacing') is None:
+            print('bed grid spacing set to 0.5 m. If you wish to change this default value, add bed_grid_spacing to the inputs provided in the JSON file')
+            self.bed_grid_spacing = 0.5
+        else:
+            self.bed_grid_spacing = float(loaded_file.pop('bed_grid_spacing'))
+
+        if loaded_file.get('bed_max_distance') is None:
+            print('bed max distance set to 4 m (the bed is only interpolated within this distance of a sounding). If you wish to change this default value, add bed_max_distance to the inputs provided in the JSON file')
+            self.bed_max_distance = 4.0
+        else:
+            self.bed_max_distance = float(loaded_file.pop('bed_max_distance'))
+
+        if loaded_file.get('bed_max_points') is None:
+            print('bed max points set to 250000 per survey day (the grid spacing is widened when a survey would need more). If you wish to change this default value, add bed_max_points to the inputs provided in the JSON file')
+            self.bed_max_points = 250000
+        else:
+            self.bed_max_points = int(loaded_file.pop('bed_max_points'))
+        if self.bed_grid_spacing <= 0 or self.bed_max_distance <= 0:
+            raise ValueError('bed_grid_spacing and bed_max_distance must be larger than zero')
+
     def setup(self):
         """
         Calls the load_data_from_json method to extract the information provided in the JSON-based document and checks
@@ -433,7 +462,7 @@ class BathymetrySiteBuilder(object):
                 raise ValueError('the output directory "{}" is not empty and was not created by BathyMap; choose another output_directory'.format(self.output_directory))
             self.empty_output_directory()
         shutil.copytree(self.site_template_directory, self.output_directory, dirs_exist_ok=True)
-        for sub_folder in ['points', 'csv', 'raw']:
+        for sub_folder in ['points', 'csv', 'raw', 'bed']:
             os.makedirs(os.path.join(self.output_directory, 'data', sub_folder), exist_ok=True)
         with open(marker_file, "w") as f:
             f.write('created by BathyMap on ' + datetime.datetime.now(datetime.timezone.utc).isoformat() + '\n')
@@ -624,6 +653,122 @@ class BathymetrySiteBuilder(object):
         record['files']['raw_name'] = os.path.basename(file_path)
         return record
 
+    def survey_key(self, line_record):
+        """
+        Returns the key of the survey day a line belongs to (date, area name and location, as the website groups the
+        line list) and a file-name-safe identifier made from it.
+        """
+        location = str(line_record['metadata'].get('location', ''))
+        key = '{}|{}|{}'.format(line_record['date'], line_record['area'], location)
+        survey_id = re.sub(r'[^A-Za-z0-9_.-]+', '-', '{}__{}__{}'.format(line_record['date'], location, line_record['area'])).strip('-')
+        return key, survey_id
+
+    def utm_transformer(self, longitude, latitude):
+        """
+        Returns the transformers between WGS 84 longitude and latitude and the UTM zone of the given point, used to
+        interpolate the bed in metres.
+        """
+        zone = int((longitude + 180) // 6) + 1
+        epsg = (32600 if latitude >= 0 else 32700) + zone
+        forward = Transformer.from_crs('EPSG:4326', 'EPSG:{}'.format(epsg), always_xy=True)
+        backward = Transformer.from_crs('EPSG:{}'.format(epsg), 'EPSG:4326', always_xy=True)
+        return forward, backward, epsg
+
+    def interpolate_survey_bed(self, soundings):
+        """
+        Interpolates the depths of one survey day onto a regular grid in metres (UTM), linearly between neighbouring
+        soundings (Delaunay triangulation), and keeps only the grid points within self.bed_max_distance of a sounding.
+        The grid spacing is self.bed_grid_spacing, widened when the survey would need more than self.bed_max_points
+        points. Returns a dictionary with the grid, the projected soundings and the projection, or None when the
+        soundings cannot be triangulated (fewer than three, or all on one line).
+        """
+        if len(soundings) < 3:
+            return None
+        forward, backward, epsg = self.utm_transformer(float(soundings['Longitude'].mean()), float(soundings['Latitude'].mean()))
+        easting, northing = forward.transform(soundings['Longitude'].values, soundings['Latitude'].values)
+        x0, y0 = float(np.mean(easting)), float(np.mean(northing))
+        x, y, z = easting - x0, northing - y0, soundings['Depth'].values.astype(float)
+        tree = cKDTree(np.c_[x, y])
+        spacing = self.bed_grid_spacing
+        while True:
+            grid_x, grid_y = np.meshgrid(np.arange(x.min(), x.max() + spacing, spacing), np.arange(y.min(), y.max() + spacing, spacing))
+            distance, _ = tree.query(np.c_[grid_x.ravel(), grid_y.ravel()])
+            near = distance <= self.bed_max_distance
+            if near.sum() <= self.bed_max_points:
+                break
+            spacing = spacing * 1.5
+        if spacing != self.bed_grid_spacing:
+            print('the bed grid spacing was widened to', round(spacing, 2), 'm to stay within bed_max_points')
+        try:
+            grid_z = griddata((x, y), z, (grid_x.ravel()[near], grid_y.ravel()[near]), method='linear')
+        except Exception as error:
+            print('the bed could not be interpolated:', error)
+            return None
+        keep = ~np.isnan(grid_z)
+        bed = {}
+        bed['x'] = grid_x.ravel()[near][keep]
+        bed['y'] = grid_y.ravel()[near][keep]
+        bed['z'] = grid_z[keep]
+        bed['spacing'] = spacing
+        bed['origin'] = (x0, y0)
+        bed['epsg'] = epsg
+        bed['backward'] = backward
+        bed['forward'] = forward
+        return bed
+
+    def write_survey_beds(self, line_records, survey_soundings):
+        """
+        Writes, for each survey day, the interpolated bed and the soundings drawn with it in the 3D view
+        (data/bed/<survey>.json, coordinates in metres from the centre of the survey), and the interpolated bed as a
+        CSV file with latitude, longitude and interpolated depth (data/bed/<survey>.csv). Returns the list of survey
+        days written, for the index.
+        """
+        beds = []
+        for key in survey_soundings:
+            parts = survey_soundings[key]
+            soundings = pd.concat([part['soundings'] for part in parts], ignore_index=True)
+            survey_id = parts[0]['survey_id']
+            print('interpolating the bed of', key.replace('|', ' | '), 'from', len(soundings), 'soundings')
+            bed = self.interpolate_survey_bed(soundings)
+            if bed is None or len(bed['z']) == 0:
+                print('no bed was interpolated for this survey day')
+                continue
+            x0, y0 = bed['origin']
+            shown = {'x': [], 'y': [], 'z': [], 'line': []}
+            line_names = []
+            for px, part in enumerate(parts):
+                thinned = self.thin_soundings(soundings=part['soundings'], maximum_points=self.max_map_points_per_line)
+                easting, northing = bed['forward'].transform(thinned['Longitude'].values, thinned['Latitude'].values)
+                shown['x'].extend(np.round(easting - x0, 2).tolist())
+                shown['y'].extend(np.round(northing - y0, 2).tolist())
+                shown['z'].extend(np.round(thinned['Depth'].values, 3).tolist())
+                shown['line'].extend([px] * len(thinned))
+                line_names.append(part['line'])
+            depths = soundings['Depth'].values
+            points = {}
+            points['spacing'] = round(bed['spacing'], 3)
+            points['max_distance'] = self.bed_max_distance
+            points['epsg'] = bed['epsg']
+            points['range'] = [round(float(np.percentile(depths, 2)), 3), round(float(np.percentile(depths, 98)), 3)]
+            points['grid'] = {'x': np.round(bed['x'], 2).tolist(), 'y': np.round(bed['y'], 2).tolist(), 'z': np.round(bed['z'], 3).tolist()}
+            points['soundings'] = shown
+            points['lines'] = line_names
+            with open(os.path.join(self.output_directory, 'data', 'bed', survey_id + '.json'), 'w') as f:
+                json.dump(points, f, separators=(',', ':'))
+            longitude, latitude = bed['backward'].transform(bed['x'] + x0, bed['y'] + y0)
+            bed_csv = pd.DataFrame({'Latitude': np.round(latitude, 9), 'Longitude': np.round(longitude, 9), 'Interpolated depth': np.round(bed['z'], 3)})
+            bed_csv.to_csv(os.path.join(self.output_directory, 'data', 'bed', survey_id + '.csv'), index=False)
+            record = {}
+            record['key'] = key
+            record['id'] = survey_id
+            record['points'] = int(len(bed['z']))
+            record['soundings'] = int(len(soundings))
+            record['spacing'] = points['spacing']
+            record['files'] = {'points': 'data/bed/' + survey_id + '.json', 'csv': 'data/bed/' + survey_id + '.csv'}
+            beds.append(record)
+            print('bed points:', len(bed['z']), '| grid spacing:', round(bed['spacing'], 2), 'm | UTM EPSG:', bed['epsg'])
+        return beds
+
     def site_map_variables(self, all_values):
         """
         Returns the map variables offered in the "Colour by" menu of the website, each with the range of its colour
@@ -704,6 +849,7 @@ class BathymetrySiteBuilder(object):
         settings['default_basemap'] = self.default_basemap
         settings['carto_api_key'] = self.carto_api_key
         settings['start_with_list_collapsed'] = self.start_with_list_collapsed
+        settings['bed_max_distance'] = self.bed_max_distance
         settings['bbox'] = overall_bbox
         settings['combined_csv'] = 'data/all_lines.csv' if self.write_combined_csv and len(line_records) > 0 else None
         settings['generated'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -723,6 +869,7 @@ class BathymetrySiteBuilder(object):
         line_records = []
         all_depths = []
         all_values = {}
+        survey_soundings = {}
         for fx, file_path in enumerate(data_files):
             print("============================================ processing file " + str(fx + 1) + " of " + str(len(data_files)) + ": " + os.path.relpath(file_path, self.data_directory))
             line_id = self.line_id_from_path(file_path)
@@ -740,6 +887,10 @@ class BathymetrySiteBuilder(object):
                                                        number_of_map_points=number_of_map_points,
                                                        raw_link=raw_link))
             all_depths.extend(soundings['Depth'].tolist())
+            if self.interpolate_bed:
+                key, survey_id = self.survey_key(line_records[-1])
+                survey_soundings.setdefault(key, []).append({'survey_id': survey_id, 'line': line_records[-1]['line'],
+                                                             'soundings': soundings[['Latitude', 'Longitude', 'Depth']].reset_index(drop=True)})
             for map_variable in self.map_variables:
                 values = self.map_variable_values(soundings=soundings, column=map_variable['column'], scale=map_variable.get('scale', 1), from_line_start=map_variable.get('from_line_start', False))
                 if values is not None:
@@ -751,6 +902,11 @@ class BathymetrySiteBuilder(object):
         index = {}
         index['site'] = self.site_settings(line_records=line_records, all_depths=all_depths, all_values=all_values)
         index['lines'] = line_records
+        if self.interpolate_bed:
+            print('============================================ interpolating the bed of', len(survey_soundings), 'survey days')
+            index['beds'] = self.write_survey_beds(line_records=line_records, survey_soundings=survey_soundings)
+        else:
+            index['beds'] = []
         fn = os.path.join(self.output_directory, 'data', 'index.json')
         with open(fn, "w") as f:
             json.dump(index, f, separators=(',', ':'))

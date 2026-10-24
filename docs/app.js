@@ -45,6 +45,7 @@
     viewRange: null,
     viewCount: 0,
     location: '',        // location chosen in the location filter ('' = all)
+    beds: {},            // interpolated bed of each survey day, keyed '<date>|<area>|<location>'
     collapsed: {},       // collapsed list sections, keyed 'loc:<location>' or 'day:<date>|<area>|<location>'
     variable: 0,         // index of the map variable the soundings are coloured by (0 = water depth)
     base: null,          // name of the basemap shown
@@ -204,6 +205,7 @@
       try { localStorage.setItem('bathymap-scale', state.scaleMode); } catch (err) { /* ignore */ }
       updateViewRange();
       recolourPoints();
+      if (view3d.data) colour3d();
     });
     select.addEventListener('change', function () {
       state.variable = parseInt(select.value, 10) || 0;
@@ -555,6 +557,7 @@
     new Control().addTo(map);
   }
   function zoomToAll() {
+    show3d(false);
     if (state.site.bbox) fitView(bboxBounds(state.site.bbox));
     else map.setView([20, 0], 2);
   }
@@ -962,7 +965,9 @@
           '<button type="button" class="collapse" data-key="' + escapeHtml(dayKey) + '" aria-expanded="' + dayOpen + '" aria-label="' + (dayOpen ? 'Collapse ' : 'Expand ') + escapeHtml(fmtDate(g.date)) + '">' + CHEVRON + '</button>' +
           '<button type="button" class="zoom-to group-title" data-key="' + escapeHtml(dayKey) + '"' + idsAttr(lines) + ' title="Zoom to this survey day">' +
           '<h3>' + escapeHtml(fmtDate(g.date)) + '</h3>' +
-          '<span class="note">' + escapeHtml(g.area) + ' · ' + lines.length + (lines.length === 1 ? ' line · ' : ' lines · ') + fmtNum(pts) + ' soundings</span></button></div>';
+          '<span class="note">' + escapeHtml(g.area) + ' · ' + lines.length + (lines.length === 1 ? ' line · ' : ' lines · ') + fmtNum(pts) + ' soundings</span></button>' +
+          (bedFor(dayKey.slice(4)) ? '<button type="button" class="open-3d" data-bed="' + escapeHtml(dayKey.slice(4)) + '" aria-pressed="' + (!el('view3d').hidden && view3d.key === dayKey.slice(4)) + '" title="Open this survey day in 3D">' + CUBE + '3D</button>' : '') +
+          '</div>';
         if (dayOpen) inner += '<div class="group-body">' + lines.map(lineRow).join('') + '</div>';
         inner += '</div>';
       });
@@ -1044,7 +1049,8 @@
       '<div><dt>Mean</dt><dd>' + fmtDepth(line.depth_mean) + ' m</dd></div>' +
       '<div><dt>Max</dt><dd>' + fmtDepth(line.depth_max) + ' m</dd></div></dl>' +
       '<dl class="meta">' + meta + '</dl>' +
-      '<div class="downloads">' + downloads + '<button class="button ghost" type="button" id="detail-zoom">Zoom to line</button></div>';
+      '<div class="downloads">' + downloads + '<button class="button ghost" type="button" id="detail-zoom">Zoom to line</button>' +
+      (bedFor(surveyKey(line)) ? '<button class="button ghost" type="button" id="detail-3d">3D view of this survey day</button>' : '') + '</div>';
     box.hidden = false;
   }
 
@@ -1057,7 +1063,7 @@
     restyleTracks();
     renderDetail();
     renderList();
-    if (zoom) map.fitBounds(bboxBounds(state.byId[id].bbox), { padding: [40, 40], maxZoom: 20 });
+    if (zoom) { if (!el('view3d').hidden) show3d(false); map.fitBounds(bboxBounds(state.byId[id].bbox), { padding: [40, 40], maxZoom: 20 }); }
     updateSoundings();
     revealRow(id, anchorTop);
   }
@@ -1087,6 +1093,12 @@
     el('expand-all').addEventListener('click', function () { state.collapsed = {}; renderList(); });
     el('line-list').addEventListener('click', function (e) {
       if (e.target.matches('.set-check')) { setMany(e.target); return; }
+      var open = e.target.closest('.open-3d');
+      if (open) {
+        open3d(open.getAttribute('data-bed'));
+        if (window.matchMedia('(max-width: 760px)').matches) togglePanel(false);
+        return;
+      }
       // Clicking the name of a location or survey day zooms to its lines and opens the section.
       var zoomTo = e.target.closest('.zoom-to');
       if (zoomTo) {
@@ -1096,7 +1108,7 @@
           if (!line) return;
           if (bounds) bounds.extend(bboxBounds(line.bbox)); else bounds = bboxBounds(line.bbox);
         });
-        if (bounds) fitView(bounds);
+        if (bounds) { show3d(false); fitView(bounds); }
         var zoomKey = zoomTo.getAttribute('data-key');
         if (state.collapsed[zoomKey]) {
           delete state.collapsed[zoomKey];
@@ -1139,6 +1151,7 @@
     });
     el('detail').addEventListener('click', function (e) {
       if (e.target.id === 'detail-close') clearLineSelection();
+      if (e.target.id === 'detail-3d' && state.selected) open3d(surveyKey(state.byId[state.selected]));
       if (e.target.id === 'detail-zoom' && state.selected) map.fitBounds(bboxBounds(state.byId[state.selected].bbox), { padding: [40, 40], maxZoom: 20 });
     });
     el('line-filter').addEventListener('input', function (e) { state.filter = e.target.value.trim().toLowerCase(); renderList(); });
@@ -1151,6 +1164,243 @@
     el('panel-toggle').setAttribute('aria-expanded', String(open));
     el('panel-toggle').textContent = open ? 'Map' : 'Lines';
   }
+
+  /* ---------- 3D view of the interpolated bed ----------
+     The build interpolates the bed of each survey day onto a regular grid (data/bed/<survey>.json, metres from the
+     centre of the survey). The view draws that grid as a point cloud together with the measured soundings, coloured
+     by depth with the vertical scale exaggerated. The 3D library (three.js) is only loaded when a 3D view is opened. */
+  var view3d = { ready: null, renderer: null, scene: null, camera: null, controls: null, bed: null, pings: null,
+                 water: null, floor: null, data: null, key: null, exag: 20, size: 1, raf: null, pending: null, ray: null };
+  function surveyKey(line) { return line.date + '|' + line.area + '|' + lineLocation(line); }
+  function bedFor(key) { return state.beds[key] || null; }
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var tag = document.createElement('script');
+      tag.src = src; tag.onload = resolve; tag.onerror = function () { reject(new Error(src + ' could not be loaded')); };
+      document.head.appendChild(tag);
+    });
+  }
+  function ensureThree() {
+    if (!view3d.ready) {
+      view3d.ready = (window.THREE ? Promise.resolve() : loadScript('vendor/three/three.min.js'))
+        .then(function () { return THREE.OrbitControls ? null : loadScript('vendor/three/OrbitControls.js'); })
+        .then(initThree);
+      view3d.ready.catch(function () { view3d.ready = null; });   // allow another try after a failed load
+    }
+    return view3d.ready;
+  }
+  function initThree() {
+    var stage = el('stage3d');
+    view3d.renderer = new THREE.WebGLRenderer({ antialias: true });
+    view3d.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    stage.appendChild(view3d.renderer.domElement);
+    view3d.scene = new THREE.Scene();
+    view3d.camera = new THREE.PerspectiveCamera(40, 1, 0.5, 20000);
+    view3d.controls = new THREE.OrbitControls(view3d.camera, view3d.renderer.domElement);
+    view3d.controls.enableDamping = true;
+    view3d.controls.dampingFactor = 0.12;
+    view3d.controls.maxPolarAngle = Math.PI * 0.495;
+    view3d.water = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide }));
+    view3d.water.rotation.x = -Math.PI / 2;
+    view3d.water.visible = el('show-water').checked;
+    view3d.scene.add(view3d.water);
+    view3d.ray = new THREE.Raycaster();
+    stage.addEventListener('pointermove', function (e) { view3d.pending = e; });
+    stage.addEventListener('pointerleave', function () { view3d.pending = null; el('probe3d').hidden = true; });
+    window.addEventListener('resize', resize3d);
+  }
+  function dotTexture(rim) {
+    var c = document.createElement('canvas'); c.width = c.height = 64;
+    var ctx = c.getContext('2d');
+    ctx.beginPath(); ctx.arc(32, 32, 29, 0, Math.PI * 2); ctx.fillStyle = '#ffffff'; ctx.fill();
+    if (rim) { ctx.lineWidth = 9; ctx.strokeStyle = '#0f2533'; ctx.stroke(); }
+    return new THREE.CanvasTexture(c);
+  }
+  // "This view" colours the 3D view over this survey day's depths; "All data" uses the scale shared by every survey.
+  function bedRange() { return state.scaleMode === 'all' ? state.site.depth_colour_range : view3d.data.range; }
+  // x east, y up (depth goes down), z south: three's z axis points towards the viewer.
+  function makePoints(set, size, rim) {
+    var n = set.x.length, pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+    for (var i = 0; i < n; i++) { pos[3 * i] = set.x[i]; pos[3 * i + 2] = -set.y[i]; }
+    var g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    var m = new THREE.PointsMaterial({ size: size * view3d.size, vertexColors: true, map: dotTexture(rim), alphaTest: 0.5, sizeAttenuation: true });
+    var p = new THREE.Points(g, m);
+    p.userData = { set: set, base: size };
+    view3d.scene.add(p);
+    return p;
+  }
+  function colour3d() {
+    var range = bedRange();
+    [view3d.bed, view3d.pings].forEach(function (p) {
+      var c = p.geometry.attributes.color, z = p.userData.set.z;
+      for (var i = 0; i < z.length; i++) {
+        var rgb = rampColour(z[i], range, 'depth').match(/\d+/g);
+        c.array[3 * i] = rgb[0] / 255; c.array[3 * i + 1] = rgb[1] / 255; c.array[3 * i + 2] = rgb[2] / 255;
+      }
+      c.needsUpdate = true;
+    });
+    var ramp = RAMPS.depth, canvas = el('ramp3d'), ctx = canvas.getContext('2d'), grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
+    ramp.forEach(function (col, i) { grad.addColorStop(i / (ramp.length - 1), col); });
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    el('ticks3d').innerHTML = '<span>≤ ' + range[0].toFixed(2) + '</span><span>' + ((range[0] + range[1]) / 2).toFixed(2) + '</span><span>≥ ' + range[1].toFixed(2) + '</span>';
+  }
+  function extent3d() {
+    var x = view3d.data.grid.x, y = view3d.data.grid.y, e = [Infinity, -Infinity, Infinity, -Infinity];
+    for (var i = 0; i < x.length; i++) { if (x[i] < e[0]) e[0] = x[i]; if (x[i] > e[1]) e[1] = x[i]; if (y[i] < e[2]) e[2] = y[i]; if (y[i] > e[3]) e[3] = y[i]; }
+    return e;
+  }
+  function exaggerate3d() {
+    var d = view3d.data, maxDepth = 0;
+    d.soundings.z.forEach(function (z) { if (z > maxDepth) maxDepth = z; });
+    d.grid.z.forEach(function (z) { if (z > maxDepth) maxDepth = z; });
+    [view3d.bed, view3d.pings].forEach(function (p) {
+      var a = p.geometry.attributes.position, z = p.userData.set.z;
+      for (var i = 0; i < z.length; i++) a.array[3 * i + 1] = -z[i] * view3d.exag;
+      a.needsUpdate = true;
+      p.geometry.computeBoundingSphere();
+    });
+    var e = d.extent, cx = (e[0] + e[1]) / 2, cz = -(e[2] + e[3]) / 2, span = Math.max(e[1] - e[0], e[3] - e[2]);
+    if (view3d.floor) { view3d.scene.remove(view3d.floor); view3d.floor.geometry.dispose(); }
+    var step = span > 600 ? 100 : span > 150 ? 20 : 10, size = Math.ceil((span + 2 * step) / step) * step;
+    var gridColour = new THREE.Color(cssVar('--stage-grid'));
+    view3d.floor = new THREE.GridHelper(size, size / step, gridColour, gridColour);
+    view3d.floor.material.transparent = true; view3d.floor.material.opacity = 0.55;
+    view3d.floor.position.set(cx, -maxDepth * view3d.exag - 1.5, cz);
+    view3d.scene.add(view3d.floor);
+    view3d.water.scale.set(e[1] - e[0] + 10, e[3] - e[2] + 10, 1);
+    view3d.water.position.set(cx, 0, cz);
+    d.centre = { x: cx, z: cz, span: span, maxDepth: maxDepth, step: step };
+  }
+  function camera3d(kind) {
+    var c = view3d.data.centre, aspect = view3d.camera.aspect || 1;
+    var dist = c.span * 0.95 / Math.min(1, aspect * 1.1), mid = -c.maxDepth * view3d.exag * 0.5;
+    if (kind === 'top') view3d.camera.position.set(c.x, dist * 1.4, c.z + 0.01);
+    else if (kind === 'side') view3d.camera.position.set(c.x + dist * 1.25, mid * 0.8, c.z);
+    else view3d.camera.position.set(c.x + dist * 0.55, dist * 0.6, c.z + dist * 0.85);
+    view3d.controls.target.set(c.x, mid, c.z);
+    view3d.controls.update();
+  }
+  function theme3d() {
+    if (!view3d.scene) return;
+    view3d.scene.background = new THREE.Color(cssVar('--stage'));
+    view3d.water.material.color = new THREE.Color(cssVar('--water'));
+    if (view3d.data) exaggerate3d();
+  }
+  function resize3d() {
+    if (!view3d.renderer || el('view3d').hidden) return;
+    var stage = el('stage3d'), w = stage.clientWidth, h = stage.clientHeight;
+    view3d.renderer.setSize(w, h);
+    view3d.camera.aspect = w / Math.max(h, 1);
+    view3d.camera.updateProjectionMatrix();
+  }
+  function probe3d() {
+    var e = view3d.pending; view3d.pending = null;
+    if (!e || !view3d.data) return;
+    var stage = el('stage3d'), r = stage.getBoundingClientRect(), box = el('probe3d');
+    var mouse = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    view3d.ray.params.Points.threshold = Math.max(0.3, view3d.data.spacing);
+    view3d.ray.setFromCamera(mouse, view3d.camera);
+    var targets = [view3d.pings, view3d.bed].filter(function (p) { return p.visible; });
+    var hits = view3d.ray.intersectObjects(targets, false), hit = null;
+    for (var k = 0; k < hits.length; k++) {
+      if (hits[k].distance > hits[0].distance + 4) break;
+      if (!hit || hits[k].distanceToRay < hit.distanceToRay - 0.05) hit = hits[k];
+    }
+    if (!hit) { box.hidden = true; return; }
+    var set = hit.object.userData.set, i = hit.index, measured = hit.object === view3d.pings;
+    box.innerHTML = '<span class="kind' + (measured ? ' measured' : '') + '">' +
+      (measured ? 'Measured sounding · ' + escapeHtml(view3d.data.lines[set.line[i]] || '') : 'Interpolated estimate') + '</span>' +
+      '<strong>' + set.z[i].toFixed(measured ? 3 : 2) + ' m</strong>';
+    box.hidden = false;
+    var x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
+    if (x + box.offsetWidth > r.width - 8) x -= box.offsetWidth + 28;
+    if (y + box.offsetHeight > r.height - 8) y -= box.offsetHeight + 28;
+    box.style.left = x + 'px'; box.style.top = y + 'px';
+  }
+  function loop3d() {
+    view3d.raf = requestAnimationFrame(loop3d);
+    probe3d();
+    view3d.controls.update();
+    view3d.renderer.render(view3d.scene, view3d.camera);
+  }
+  function show3d(on) {
+    el('view3d').hidden = !on;
+    el('tab-3d').setAttribute('aria-selected', String(on));
+    el('tab-map').setAttribute('aria-selected', String(!on));
+    if (on && view3d.renderer) { resize3d(); if (!view3d.raf && view3d.data) loop3d(); }
+    if (!on && view3d.raf) { cancelAnimationFrame(view3d.raf); view3d.raf = null; }
+    if (!on) map.invalidateSize();
+    [].forEach.call(document.querySelectorAll('.open-3d'), function (b) { b.setAttribute('aria-pressed', String(on && b.getAttribute('data-bed') === view3d.key)); });
+  }
+  function message3d(text) { el('message3d').textContent = text || ''; el('message3d').hidden = !text; }
+  function open3d(key) {
+    var record = bedFor(key);
+    if (!record) return;
+    el('view-tabs').hidden = false;
+    var same = view3d.key === key && view3d.data;
+    view3d.key = key;
+    show3d(true);
+    if (same) return;
+    var parts = key.split('|');
+    el('bed-title').textContent = (parts[2] ? parts[2] + ' · ' : '') + fmtDate(parts[0]);
+    el('bed-csv').href = record.files.csv;
+    el('bed-csv').setAttribute('download', record.id + '_interpolated-bed.csv');
+    el('n-bed').textContent = fmtNum(record.points);
+    el('caveat3d').textContent = 'The bed between soundings is interpolated linearly on a ' + record.spacing + ' m grid, only within ' +
+      state.site.bed_max_distance + ' m of a measured sounding. Those values are estimates; only the measured soundings are data.';
+    if (window.matchMedia('(max-width: 760px)').matches) el('controls3d').open = false;
+    message3d('Loading the 3D view…');
+    Promise.all([ensureThree(), fetch(record.files.points).then(function (r) {
+      if (!r.ok) throw new Error(record.files.points + ' returned ' + r.status);
+      return r.json();
+    })]).then(function (res) {
+      if (view3d.key !== key) return;
+      var d = res[1];
+      [view3d.bed, view3d.pings].forEach(function (p) {
+        if (!p) return;
+        view3d.scene.remove(p); p.geometry.dispose(); p.material.map.dispose(); p.material.dispose();
+      });
+      view3d.data = d;
+      d.extent = extent3d();
+      view3d.bed = makePoints(d.grid, d.spacing * 1.7, false);
+      view3d.pings = makePoints(d.soundings, Math.max(0.6, d.spacing * 2.2), true);
+      view3d.bed.visible = el('show-bed').checked;
+      view3d.pings.visible = el('show-pings').checked;
+      el('n-pings').textContent = fmtNum(d.soundings.x.length);
+      colour3d();
+      theme3d();
+      resize3d();
+      camera3d('oblique');
+      if (!view3d.raf && !el('view3d').hidden) loop3d();
+      message3d('');
+    }).catch(function (err) {
+      console.error(err);
+      message3d(window.WebGLRenderingContext ? 'The 3D view could not be opened: ' + err.message : 'The 3D view needs WebGL, which this browser has turned off.');
+    });
+  }
+  function bind3d() {
+    el('tab-map').addEventListener('click', function () { show3d(false); });
+    el('tab-3d').addEventListener('click', function () { if (view3d.key) open3d(view3d.key); });
+    el('show-bed').addEventListener('change', function (e) { if (view3d.bed) view3d.bed.visible = e.target.checked; });
+    el('show-pings').addEventListener('change', function (e) { if (view3d.pings) view3d.pings.visible = e.target.checked; });
+    el('show-water').addEventListener('change', function (e) { if (view3d.water) view3d.water.visible = e.target.checked; });
+    el('exag3d').addEventListener('input', function (e) {
+      view3d.exag = +e.target.value; el('exag3d-out').textContent = view3d.exag + '×';
+      if (view3d.data) { exaggerate3d(); view3d.controls.target.y = -view3d.data.centre.maxDepth * view3d.exag * 0.5; }
+    });
+    el('size3d').addEventListener('input', function (e) {
+      view3d.size = +e.target.value; el('size3d-out').textContent = view3d.size.toFixed(1);
+      [view3d.bed, view3d.pings].forEach(function (p) { if (p) p.material.size = p.userData.base * view3d.size; });
+    });
+    [].forEach.call(document.querySelectorAll('.views3d button'), function (b) {
+      b.addEventListener('click', function () { if (view3d.data) camera3d(b.getAttribute('data-view')); });
+    });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', theme3d);
+    new MutationObserver(theme3d).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+  var CUBE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 14 4.8v6.4L8 14.5 2 11.2V4.8z M2 4.8 8 8l6-3.2 M8 8v6.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
 
   /* ---------- site text ---------- */
   function renderSiteText() {
@@ -1194,6 +1444,7 @@
     state.site = index.site;
     state.lines = index.lines || [];
     state.lines.forEach(function (l) { state.byId[l.id] = l; });
+    (index.beds || []).forEach(function (b) { state.beds[b.key] = b; });
     initMap();
     addZoomAllControl();
     addSelectionControl();
@@ -1202,6 +1453,7 @@
     drawLegend();
     drawTracks();
     bindPanel();
+    bind3d();
     setupLocationFilter();
     if (state.site.start_with_list_collapsed !== false) collapseAll();
     renderList();
