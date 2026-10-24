@@ -977,7 +977,9 @@
         '<input type="checkbox" class="set-check" aria-label="Show all lines of ' + escapeHtml(name) + ' on the map"' + setCheckbox(sec.lines) + '>' +
         '<button type="button" class="collapse" data-key="' + escapeHtml(locKey) + '" aria-expanded="' + locOpen + '" aria-label="' + (locOpen ? 'Collapse ' : 'Expand ') + escapeHtml(name) + '">' + CHEVRON + '</button>' +
         '<button type="button" class="zoom-to location-title" data-key="' + escapeHtml(locKey) + '"' + idsAttr(sec.lines) + ' title="Zoom to ' + escapeHtml(name) + '">' +
-        '<span class="location-name">' + escapeHtml(name) + '</span><span class="location-count">' + sec.lines.length + (sec.lines.length === 1 ? ' line' : ' lines') + '</span></button></div>' +
+        '<span class="location-name">' + escapeHtml(name) + '</span><span class="location-count">' + sec.lines.length + (sec.lines.length === 1 ? ' line' : ' lines') + '</span></button>' +
+        (sec.location && bedFor('loc|' + sec.location) ? '<button type="button" class="open-3d" data-bed="' + escapeHtml('loc|' + sec.location) + '" aria-pressed="' + (!el('view3d').hidden && view3d.key === 'loc|' + sec.location) + '" title="Open ' + escapeHtml(name) + ' in 3D">' + CUBE + '3D</button>' : '') +
+        '</div>' +
         (locOpen ? '<div class="location-body">' + inner + '</div>' : '') + '</section>';
     });
     list.innerHTML = html || '<p class="note">No lines match this filter.</p>';
@@ -1086,6 +1088,7 @@
     function setMany(box) {
       var ids = (box.getAttribute('data-ids') || '').split(' ').filter(Boolean);
       ids.forEach(function (id) { setHidden(id, !box.checked); });
+      if (!box.checked) leave3dIfHidden(ids);
       renderList(); updateSoundings();
     }
     el('check-all').addEventListener('change', function (e) { setMany(e.target); });
@@ -1099,7 +1102,7 @@
         if (window.matchMedia('(max-width: 760px)').matches) togglePanel(false);
         return;
       }
-      // Clicking the name of a location or survey day zooms to its lines and opens the section.
+      // Clicking the name of a location or survey day zooms the map to its lines; only the arrow opens or closes it.
       var zoomTo = e.target.closest('.zoom-to');
       if (zoomTo) {
         var bounds = null;
@@ -1109,13 +1112,6 @@
           if (bounds) bounds.extend(bboxBounds(line.bbox)); else bounds = bboxBounds(line.bbox);
         });
         if (bounds) { show3d(false); fitView(bounds); }
-        var zoomKey = zoomTo.getAttribute('data-key');
-        if (state.collapsed[zoomKey]) {
-          delete state.collapsed[zoomKey];
-          renderList();
-          var same = el('line-list').querySelector('.zoom-to[data-key="' + (window.CSS && CSS.escape ? CSS.escape(zoomKey) : zoomKey) + '"]');
-          if (same && e.detail === 0) same.focus();   // keep keyboard focus; a mouse click needs no focus ring
-        }
         if (window.matchMedia('(max-width: 760px)').matches) togglePanel(false);
         return;
       }
@@ -1133,6 +1129,7 @@
       var id = row.getAttribute('data-id');
       if (e.target.matches('input[type="checkbox"]')) {
         setHidden(id, !e.target.checked);
+        if (!e.target.checked) leave3dIfHidden([id]);
         renderList(); updateSoundings();
         return;
       }
@@ -1200,10 +1197,7 @@
     view3d.controls.enableDamping = true;
     view3d.controls.dampingFactor = 0.12;
     view3d.controls.maxPolarAngle = Math.PI * 0.495;
-    view3d.water = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide }));
-    view3d.water.rotation.x = -Math.PI / 2;
-    view3d.water.visible = el('show-water').checked;
-    view3d.scene.add(view3d.water);
+    view3d.waterMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide });
     view3d.ray = new THREE.Raycaster();
     stage.addEventListener('pointermove', function (e) { view3d.pending = e; });
     stage.addEventListener('pointerleave', function () { view3d.pending = null; el('probe3d').hidden = true; });
@@ -1217,6 +1211,12 @@
     return new THREE.CanvasTexture(c);
   }
   // "This view" colours the 3D view over this survey day's depths; "All data" uses the scale shared by every survey.
+  function rgbHex(colour) {   // the stage colour as #rrggbb, whatever form the stylesheet gives it in
+    if (/^#[0-9a-f]{6}$/i.test(colour)) return colour;
+    var probe = document.createElement('canvas').getContext('2d');
+    probe.fillStyle = colour;
+    return /^#[0-9a-f]{6}$/i.test(probe.fillStyle) ? probe.fillStyle : '#808080';
+  }
   function bedRange() { return state.scaleMode === 'all' ? state.site.depth_colour_range : view3d.data.range; }
   // x east, y up (depth goes down), z south: three's z axis points towards the viewer.
   function makePoints(set, size, rim) {
@@ -1231,13 +1231,23 @@
     view3d.scene.add(p);
     return p;
   }
+  /* Interpolated points fade towards the background with distance from the nearest measured sounding, reaching 75% at
+     a third of the largest gap filled (beyond half of bed_max_distance when that is set), so the parts of the bed that
+     rest on few measurements are visibly less certain. */
+  function fadeOf(d) {
+    var data = view3d.data, near = (data.max_distance || 0) / 2, far = Math.max(near + 1, (data.max_gap || 30) / 3);
+    if (!el('fade3d').checked || d == null) return 0;
+    return 0.75 * Math.max(0, Math.min(1, (d - near) / (far - near)));
+  }
   function colour3d() {
-    var range = bedRange();
+    var range = bedRange(), stage = hexToRgb(rgbHex(cssVar('--stage')));
     [view3d.bed, view3d.pings].forEach(function (p) {
-      var c = p.geometry.attributes.color, z = p.userData.set.z;
+      var c = p.geometry.attributes.color, z = p.userData.set.z, d = p === view3d.bed ? p.userData.set.d : null;
       for (var i = 0; i < z.length; i++) {
-        var rgb = rampColour(z[i], range, 'depth').match(/\d+/g);
-        c.array[3 * i] = rgb[0] / 255; c.array[3 * i + 1] = rgb[1] / 255; c.array[3 * i + 2] = rgb[2] / 255;
+        var rgb = rampColour(z[i], range, 'depth').match(/\d+/g), f = d ? fadeOf(d[i]) : 0;
+        c.array[3 * i] = (rgb[0] * (1 - f) + stage[0] * f) / 255;
+        c.array[3 * i + 1] = (rgb[1] * (1 - f) + stage[1] * f) / 255;
+        c.array[3 * i + 2] = (rgb[2] * (1 - f) + stage[2] * f) / 255;
       }
       c.needsUpdate = true;
     });
@@ -1269,13 +1279,11 @@
     view3d.floor.material.transparent = true; view3d.floor.material.opacity = 0.55;
     view3d.floor.position.set(cx, -maxDepth * view3d.exag - 1.5, cz);
     view3d.scene.add(view3d.floor);
-    view3d.water.scale.set(e[1] - e[0] + 10, e[3] - e[2] + 10, 1);
-    view3d.water.position.set(cx, 0, cz);
-    d.centre = { x: cx, z: cz, span: span, maxDepth: maxDepth, step: step };
+    d.centre = { x: cx, z: cz, span: span, maxDepth: maxDepth, step: step, lat: d.centre ? d.centre.lat : 45 };
   }
-  function camera3d(kind) {
-    var c = view3d.data.centre, aspect = view3d.camera.aspect || 1;
-    var dist = c.span * 0.95 / Math.min(1, aspect * 1.1), mid = -c.maxDepth * view3d.exag * 0.5;
+  function camera3d(kind, focus) {
+    var c = focus || view3d.data.centre, aspect = view3d.camera.aspect || 1;
+    var dist = c.span * 0.95 / Math.min(1, aspect * 1.1), mid = -view3d.data.centre.maxDepth * view3d.exag * 0.5;
     if (kind === 'top') view3d.camera.position.set(c.x, dist * 1.4, c.z + 0.01);
     else if (kind === 'side') view3d.camera.position.set(c.x + dist * 1.25, mid * 0.8, c.z);
     else view3d.camera.position.set(c.x + dist * 0.55, dist * 0.6, c.z + dist * 0.85);
@@ -1285,8 +1293,8 @@
   function theme3d() {
     if (!view3d.scene) return;
     view3d.scene.background = new THREE.Color(cssVar('--stage'));
-    view3d.water.material.color = new THREE.Color(cssVar('--water'));
-    if (view3d.data) exaggerate3d();
+    view3d.waterMaterial.color = new THREE.Color(cssVar('--water'));
+    if (view3d.data) { exaggerate3d(); colour3d(); }
   }
   function resize3d() {
     if (!view3d.renderer || el('view3d').hidden) return;
@@ -1312,7 +1320,8 @@
     var set = hit.object.userData.set, i = hit.index, measured = hit.object === view3d.pings;
     box.innerHTML = '<span class="kind' + (measured ? ' measured' : '') + '">' +
       (measured ? 'Measured sounding · ' + escapeHtml(view3d.data.lines[set.line[i]] || '') : 'Interpolated estimate') + '</span>' +
-      '<strong>' + set.z[i].toFixed(measured ? 3 : 2) + ' m</strong>';
+      '<strong>' + set.z[i].toFixed(measured ? 3 : 2) + ' m</strong>' +
+      (!measured && set.d ? '<span class="data">' + set.d[i].toFixed(1) + ' m from the nearest sounding</span>' : '');
     box.hidden = false;
     var x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
     if (x + box.offsetWidth > r.width - 8) x -= box.offsetWidth + 28;
@@ -1327,29 +1336,231 @@
   }
   function show3d(on) {
     el('view3d').hidden = !on;
+    if (on) el('map-note').hidden = true;
     el('tab-3d').setAttribute('aria-selected', String(on));
     el('tab-map').setAttribute('aria-selected', String(!on));
-    if (on && view3d.renderer) { resize3d(); if (!view3d.raf && view3d.data) loop3d(); }
+    if (on && view3d.renderer) {
+      resize3d();
+      if (view3d.data && view3d.basemapFor !== base3dName()) basemap3d();
+      if (!view3d.raf && view3d.data) loop3d();
+    }
     if (!on && view3d.raf) { cancelAnimationFrame(view3d.raf); view3d.raf = null; }
     if (!on) map.invalidateSize();
     [].forEach.call(document.querySelectorAll('.open-3d'), function (b) { b.setAttribute('aria-pressed', String(on && b.getAttribute('data-bed') === view3d.key)); });
   }
+  /* Hiding lines that the open 3D view is built from returns to the map, zoomed to the area of that 3D view, where
+     the hidden lines are not drawn. */
+  function leave3dIfHidden(ids) {
+    if (el('view3d').hidden || !view3d.key) return;
+    var record = bedFor(view3d.key), lines = record ? record.lines || [] : [];
+    if (!ids.some(function (id) { return lines.indexOf(id) !== -1; })) return;
+    show3d(false);
+    var bounds = null;
+    lines.forEach(function (id) {
+      var line = state.byId[id];
+      if (!line) return;
+      if (bounds) bounds.extend(bboxBounds(line.bbox)); else bounds = bboxBounds(line.bbox);
+    });
+    if (bounds) fitView(bounds);
+  }
+  /* The 3D tab opens the survey in the map view: of the lines shown on the map and inside the view, the location with
+     the most lines (its 3D view of all survey days), or for lines without a location, the survey day with the most. */
+  function bedForMapView() {
+    var bounds = map.getBounds(), counts = {}, best = null;
+    state.lines.forEach(function (line) {
+      if (state.hidden[line.id] || !bounds.intersects(bboxBounds(line.bbox))) return;
+      var location = lineLocation(line);
+      var key = location && bedFor('loc|' + location) ? 'loc|' + location : surveyKey(line);
+      if (!bedFor(key)) return;
+      counts[key] = (counts[key] || 0) + 1;
+      if (!best || counts[key] > counts[best]) best = key;
+    });
+    return best;
+  }
+  var mapNoteTimer = null;
+  function mapNote(text) {
+    var note = el('map-note');
+    note.textContent = text; note.hidden = false;
+    clearTimeout(mapNoteTimer);
+    mapNoteTimer = setTimeout(function () { note.hidden = true; }, 5000);
+  }
+  // longitude and latitude <-> metres of the open bed, with the conversion stored by the build
+  function toLocal(lon, lat) {
+    var g = view3d.data.georef;
+    return { x: g.x[0] + g.x[1] * lon + g.x[2] * lat, y: g.y[0] + g.y[1] * lon + g.y[2] * lat };
+  }
+  function toLonLat(x, y) {
+    var g = view3d.data.georef, det = g.x[1] * g.y[2] - g.x[2] * g.y[1], dx = x - g.x[0], dy = y - g.y[0];
+    return { lon: (g.y[2] * dx - g.x[2] * dy) / det, lat: (g.x[1] * dy - g.y[1] * dx) / det };
+  }
+  /* Frames the area of the map view the 3D view was opened from, when it is smaller than the bed; otherwise the whole
+     bed. */
+  function frameOrWhole() {
+    var b = view3d.frame;
+    view3d.frame = null;
+    if (b && view3d.data.georef) {
+      var sw = toLocal(b.getWest(), b.getSouth()), ne = toLocal(b.getEast(), b.getNorth());
+      var span = Math.max(Math.abs(ne.x - sw.x), Math.abs(ne.y - sw.y));
+      if (span < view3d.data.centre.span * 0.9) {
+        camera3d('oblique', { x: (sw.x + ne.x) / 2, z: -(sw.y + ne.y) / 2, span: Math.max(span, 10) });
+        return;
+      }
+    }
+    camera3d('oblique');
+  }
+
+  /* Basemap of the 3D view: the tiles of the basemap chosen on the map, around the survey, drawn as a flat sheet at the
+     water surface. The surveyed area is cut out of the sheet, so the bed shows through it. */
+  function tileUrl(base, z, x, y) {
+    if (base.osm) return 'https://tile.openstreetmap.org/' + z + '/' + x + '/' + y + '.png';
+    if (base.carto) return 'https://a.basemaps.cartocdn.com/rastertiles/' + base.carto + '/' + z + '/' + x + '/' + y + '.png?key=' + encodeURIComponent(state.site.carto_api_key);
+    return 'https://server.arcgisonline.com/ArcGIS/rest/services/' + base.esri + '/MapServer/tile/' + z + '/' + y + '/' + x;
+  }
+  function lonToTile(lon, z) { return (lon + 180) / 360 * Math.pow(2, z); }
+  function latToTile(lat, z) { var r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z); }
+  function tileToLon(x, z) { return x / Math.pow(2, z) * 360 - 180; }
+  function tileToLat(y, z) { var n = Math.PI - 2 * Math.PI * y / Math.pow(2, z); return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); }
+  function loadTile(url) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { resolve(null); };
+      img.src = url;
+    });
+  }
+  /* The basemap of the 3D view is chosen in its own menu: "None" (plain background) or one of the map's basemaps. Until
+     the visitor picks one there, it follows the basemap of the map. */
+  function base3dName() {
+    var choice = null;
+    try { choice = localStorage.getItem('bathymap-base3d'); } catch (e) { /* storage unavailable */ }
+    if (choice === 'none') return '';
+    if (choice && BASEMAPS.some(function (b) { return b.name === choice && (!b.carto || state.site.carto_api_key); })) return choice;
+    return state.base;
+  }
+  /* The water surface covers the surveyed area only: the outline stored by the build (older builds: the bed's extent). */
+  function water3d() {
+    var d = view3d.data, o = d.outline, g = new THREE.BufferGeometry();
+    if (view3d.water) { view3d.scene.remove(view3d.water); view3d.water.geometry.dispose(); }
+    if (o && o.triangles.length) {
+      var pos = new Float32Array(o.x.length * 3);
+      for (var i = 0; i < o.x.length; i++) { pos[3 * i] = o.x[i]; pos[3 * i + 1] = -0.05; pos[3 * i + 2] = -o.y[i]; }
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setIndex(o.triangles);
+    } else {
+      var e = d.extent;
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([e[0], -0.05, -e[3], e[1], -0.05, -e[3], e[0], -0.05, -e[2], e[1], -0.05, -e[2]]), 3));
+      g.setIndex([0, 2, 1, 1, 2, 3]);
+    }
+    view3d.water = new THREE.Mesh(g, view3d.waterMaterial);
+    view3d.water.visible = el('show-water').checked;
+    view3d.scene.add(view3d.water);
+  }
+  function removeBasemap3d() {
+    if (view3d.basemap) {
+      view3d.scene.remove(view3d.basemap); view3d.basemap.geometry.dispose(); view3d.basemap.material.map.dispose(); view3d.basemap.material.dispose();
+      view3d.basemap = null;
+    }
+    el('attr3d').hidden = true;
+    el('basemap-note').hidden = true;
+  }
+  function basemap3d() {
+    var d = view3d.data, key = view3d.key, baseName = base3dName();
+    el('base3d').value = baseName;
+    view3d.basemapFor = baseName;
+    var base = BASEMAPS.filter(function (b) { return b.name === baseName; })[0];
+    if (!base) { removeBasemap3d(); return; }
+    if (!d || !d.georef) return;
+    var e = d.extent, margin = Math.max(100, 0.6 * d.centre.span);
+    var corners = [toLonLat(e[0] - margin, e[2] - margin), toLonLat(e[1] + margin, e[2] - margin), toLonLat(e[0] - margin, e[3] + margin), toLonLat(e[1] + margin, e[3] + margin)];
+    var west = Math.min.apply(null, corners.map(function (c) { return c.lon; })), east = Math.max.apply(null, corners.map(function (c) { return c.lon; }));
+    var south = Math.min.apply(null, corners.map(function (c) { return c.lat; })), north = Math.max.apply(null, corners.map(function (c) { return c.lat; }));
+    var maxZoom = base.osm ? 19 : base.carto ? 20 : base.maxNativeZoom, z = maxZoom, x0, x1, y0, y1;
+    for (; z > 1; z--) {   // the closest zoom whose tiles over the area number 36 or fewer
+      x0 = Math.floor(lonToTile(west, z)); x1 = Math.floor(lonToTile(east, z));
+      y0 = Math.floor(latToTile(north, z)); y1 = Math.floor(latToTile(south, z));
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) <= 36) break;
+    }
+    var jobs = [];
+    for (var tx = x0; tx <= x1; tx++) for (var ty = y0; ty <= y1; ty++) jobs.push({ x: tx, y: ty, img: loadTile(tileUrl(base, z, tx, ty)) });
+    Promise.all(jobs.map(function (j) { return j.img; })).then(function (images) {
+      if (view3d.key !== key || view3d.basemapFor !== baseName) return;   // another survey or basemap was chosen meanwhile
+      var canvas = document.createElement('canvas');
+      canvas.width = (x1 - x0 + 1) * 256; canvas.height = (y1 - y0 + 1) * 256;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = cssVar('--stage'); ctx.fillRect(0, 0, canvas.width, canvas.height);
+      var drawn = 0;
+      images.forEach(function (img, i) { if (img) { ctx.drawImage(img, (jobs[i].x - x0) * 256, (jobs[i].y - y0) * 256, 256, 256); drawn++; } });
+      try { ctx.getImageData(0, 0, 1, 1); } catch (err) { drawn = 0; }   // tiles without permission to be reused in 3D
+      if (!drawn) { el('basemap-note').textContent = 'The basemap could not be loaded in 3D.'; el('basemap-note').hidden = false; return; }
+      el('basemap-note').hidden = true;
+      // cut the surveyed area out of the sheet, so the bed shows through
+      var metresPerPixel = 40075016.7 * Math.cos(d.centre.lat * Math.PI / 180) / Math.pow(2, z) / 256;
+      var cut = Math.max(1.5, d.spacing * 1.2 / metresPerPixel);
+      ctx.globalCompositeOperation = 'destination-out';
+      [d.grid, d.soundings].forEach(function (set) {
+        for (var i = 0; i < set.x.length; i++) {
+          var ll = toLonLat(set.x[i], set.y[i]);
+          var px = (lonToTile(ll.lon, z) - x0) * 256, py = (latToTile(ll.lat, z) - y0) * 256;
+          ctx.fillRect(px - cut, py - cut, 2 * cut, 2 * cut);
+        }
+      });
+      if (d.outline) {   // the whole surveyed area, holes in the bed included, so no basemap is left inside it
+        var o = d.outline, pxs = new Float64Array(o.x.length), pys = new Float64Array(o.x.length);
+        for (var v = 0; v < o.x.length; v++) {
+          var lv = toLonLat(o.x[v], o.y[v]);
+          pxs[v] = (lonToTile(lv.lon, z) - x0) * 256; pys[v] = (latToTile(lv.lat, z) - y0) * 256;
+        }
+        ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
+        for (var t = 0; t < o.triangles.length; t += 3) {
+          var a = o.triangles[t], b = o.triangles[t + 1], c = o.triangles[t + 2];
+          ctx.beginPath(); ctx.moveTo(pxs[a], pys[a]); ctx.lineTo(pxs[b], pys[b]); ctx.lineTo(pxs[c], pys[c]); ctx.closePath();
+          ctx.fill(); ctx.stroke();   // the stroke closes the hairline seams between neighbouring triangles
+        }
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      // the sheet's corners, from the tile edges, in the metres of the bed
+      var nw = toLocal(tileToLon(x0, z), tileToLat(y0, z)), ne = toLocal(tileToLon(x1 + 1, z), tileToLat(y0, z));
+      var sw = toLocal(tileToLon(x0, z), tileToLat(y1 + 1, z)), se = toLocal(tileToLon(x1 + 1, z), tileToLat(y1 + 1, z));
+      var g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([nw.x, 0, -nw.y, ne.x, 0, -ne.y, sw.x, 0, -sw.y, se.x, 0, -se.y]), 3));
+      g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), 2));
+      g.setIndex([0, 2, 1, 1, 2, 3]);
+      var texture = new THREE.CanvasTexture(canvas);
+      texture.anisotropy = view3d.renderer.capabilities.getMaxAnisotropy();
+      removeBasemap3d();
+      view3d.basemap = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: texture, alphaTest: 0.5, side: THREE.DoubleSide }));
+      view3d.scene.add(view3d.basemap);
+      el('attr3d').innerHTML = base.osm ? '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+        : base.carto ? '&copy; OpenStreetMap contributors &copy; CARTO' : base.attribution;
+      el('attr3d').hidden = false;
+    });
+  }
+
   function message3d(text) { el('message3d').textContent = text || ''; el('message3d').hidden = !text; }
-  function open3d(key) {
+  function open3d(key, frame) {
     var record = bedFor(key);
     if (!record) return;
-    el('view-tabs').hidden = false;
     var same = view3d.key === key && view3d.data;
     view3d.key = key;
+    view3d.frame = frame || null;
     show3d(true);
-    if (same) return;
-    var parts = key.split('|');
-    el('bed-title').textContent = (parts[2] ? parts[2] + ' · ' : '') + fmtDate(parts[0]);
+    if (same) { frameOrWhole(); return; }
+    var parts = key.split('|'), dates = record.dates || [];
+    if (record.kind === 'location') {
+      el('bed-title').textContent = parts.slice(1).join('|') + ' · ' + (dates.length === 1 ? fmtDate(dates[0]) : dates.length + ' survey days');
+    } else {
+      el('bed-title').textContent = (parts[2] ? parts[2] + ' · ' : '') + fmtDate(parts[0]);
+    }
     el('bed-csv').href = record.files.csv;
     el('bed-csv').setAttribute('download', record.id + '_interpolated-bed.csv');
     el('n-bed').textContent = fmtNum(record.points);
-    el('caveat3d').textContent = 'The bed between soundings is interpolated linearly on a ' + record.spacing + ' m grid, only within ' +
-      state.site.bed_max_distance + ' m of a measured sounding. Those values are estimates; only the measured soundings are data.';
+    el('caveat3d').textContent = 'The bed is interpolated linearly on a ' + record.spacing + ' m grid between neighbouring passes up to ' +
+      state.site.bed_max_gap + ' m apart' + (state.site.bed_max_distance > 0 ? ', and within ' + state.site.bed_max_distance + ' m of every sounding' : '') +
+      '. It is not extended beyond the outermost passes' + (state.site.bed_max_distance > 0 ? '' : ' or beside a lone pass') +
+      '. Those values are estimates and fade with distance from the nearest sounding; only the measured soundings are data.' +
+      (record.kind === 'location' && dates.length > 1 ? ' This bed combines the survey days from ' + fmtDate(dates[0]) + ' to ' + fmtDate(dates[dates.length - 1]) +
+        '; the bed may have changed between them.' : '');
     if (window.matchMedia('(max-width: 760px)').matches) el('controls3d').open = false;
     message3d('Loading the 3D view…');
     Promise.all([ensureThree(), fetch(record.files.points).then(function (r) {
@@ -1358,12 +1569,23 @@
     })]).then(function (res) {
       if (view3d.key !== key) return;
       var d = res[1];
-      [view3d.bed, view3d.pings].forEach(function (p) {
+      [view3d.bed, view3d.pings, view3d.basemap].forEach(function (p) {
         if (!p) return;
         view3d.scene.remove(p); p.geometry.dispose(); p.material.map.dispose(); p.material.dispose();
       });
+      view3d.basemap = null;
+      el('attr3d').hidden = true;
       view3d.data = d;
       d.extent = extent3d();
+      if (d.georef) d.centre = { lat: toLonLat((d.extent[0] + d.extent[1]) / 2, (d.extent[2] + d.extent[3]) / 2).lat };
+      // starting vertical exaggeration: the number set in the configuration, or (auto) the one at which the deepest
+      // point lies a tenth of the survey's width below the water surface, between 1x and 30x; adjustable with the slider
+      var deepest = 0;
+      d.soundings.z.forEach(function (z) { if (z > deepest) deepest = z; });
+      var width = Math.max(d.extent[1] - d.extent[0], d.extent[3] - d.extent[2]), fixed = +state.site.vertical_exaggeration;
+      view3d.exag = fixed > 0 ? Math.min(60, Math.round(fixed)) : Math.max(1, Math.min(30, Math.round(0.1 * width / Math.max(deepest, 0.1))));
+      el('exag3d').value = view3d.exag;
+      el('exag3d-out').textContent = view3d.exag + '×';
       view3d.bed = makePoints(d.grid, d.spacing * 1.7, false);
       view3d.pings = makePoints(d.soundings, Math.max(0.6, d.spacing * 2.2), true);
       view3d.bed.visible = el('show-bed').checked;
@@ -1372,7 +1594,9 @@
       colour3d();
       theme3d();
       resize3d();
-      camera3d('oblique');
+      water3d();
+      frameOrWhole();
+      basemap3d();
       if (!view3d.raf && !el('view3d').hidden) loop3d();
       message3d('');
     }).catch(function (err) {
@@ -1382,10 +1606,23 @@
   }
   function bind3d() {
     el('tab-map').addEventListener('click', function () { show3d(false); });
-    el('tab-3d').addEventListener('click', function () { if (view3d.key) open3d(view3d.key); });
+    el('tab-3d').addEventListener('click', function () {
+      if (!el('view3d').hidden) return;
+      var key = bedForMapView();
+      if (key) open3d(key, map.getBounds());
+      else mapNote('No survey with a 3D view is in the map view. Zoom to a survey, or use a 3D button in the list.');
+    });
+    el('base3d').innerHTML = '<option value="">None (plain background)</option>' + BASEMAPS.filter(function (b) { return !b.carto || state.site.carto_api_key; })
+      .map(function (b) { return '<option value="' + escapeHtml(b.name) + '">' + escapeHtml(b.name) + '</option>'; }).join('');
+    el('base3d').value = base3dName();
+    el('base3d').addEventListener('change', function (e) {
+      try { localStorage.setItem('bathymap-base3d', e.target.value || 'none'); } catch (err) { /* ignore */ }
+      if (view3d.data) basemap3d();
+    });
     el('show-bed').addEventListener('change', function (e) { if (view3d.bed) view3d.bed.visible = e.target.checked; });
     el('show-pings').addEventListener('change', function (e) { if (view3d.pings) view3d.pings.visible = e.target.checked; });
     el('show-water').addEventListener('change', function (e) { if (view3d.water) view3d.water.visible = e.target.checked; });
+    el('fade3d').addEventListener('change', function () { if (view3d.data) colour3d(); });
     el('exag3d').addEventListener('input', function (e) {
       view3d.exag = +e.target.value; el('exag3d-out').textContent = view3d.exag + '×';
       if (view3d.data) { exaggerate3d(); view3d.controls.target.y = -view3d.data.centre.maxDepth * view3d.exag * 0.5; }
@@ -1445,6 +1682,7 @@
     state.lines = index.lines || [];
     state.lines.forEach(function (l) { state.byId[l.id] = l; });
     (index.beds || []).forEach(function (b) { state.beds[b.key] = b; });
+    el('view-tabs').hidden = !(index.beds || []).length;
     initMap();
     addZoomAllControl();
     addSelectionControl();

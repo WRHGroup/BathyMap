@@ -211,34 +211,64 @@ The map opens showing all the data, and **Zoom to all data** returns to that vie
 
 The list opens with every location collapsed (or every survey day, when no locations are named). The arrows fold and
 unfold each location and survey day, and **Collapse all** / **Expand all** do it for the whole list. Clicking the name
-of a location or survey day zooms the map to its lines and opens it in the list. The checkboxes
+of a location or survey day zooms the map to its lines without opening it; only the arrow opens and closes it. The checkboxes
 show or hide lines on the map: **All lines** at the top (only the lines matching the current filter, when one is set),
 one per location, one per survey day and one per line. A checkbox with a dash means some of its lines are hidden.
 Selecting a line opens its details above the list, and the list keeps its place.
 
 ### 3D view of the bed
 
-Each survey day has a **3D** button next to its date in the list, and each line's details have **3D view of this survey
-day**. The 3D view replaces the map; the **Map** and **3D bed** tabs at the top switch between the two, and choosing a
-line, a location or **Zoom to all data** returns to the map.
+Each location and each survey day has a **3D** button in the list, and each line's details have **3D view of this
+survey day**. A location's 3D view interpolates all its survey days together, for one bed of the whole location; the
+panel says when it combines several dates, because the bed may have changed between them. A location surveyed on a
+single day shares the files of that day. The 3D view replaces the map. The **Map** and **3D bed** tabs at the top switch
+between the two. **3D bed** opens the survey in the map view: of the lines shown inside the view, the location with the
+most lines (or, for lines without a location, the survey day with the most), framed on the area of the map view when
+that is smaller than the survey. With no survey in view, a note says so. **Map**, choosing a line, clicking the name of a location or survey day, and
+**Zoom to all data** return to the map. Unchecking lines that the open 3D view is built from also returns to the map, zoomed to that area, with those
+lines hidden.
 
 The view shows two point clouds, coloured by water depth:
 
 - **Measured soundings** (points with a dark rim): the soundings of the survey day, thinned like the map
   (`max_map_points_per_line`).
 - **Interpolated bed** (plain points): the bed estimated between the soundings. The build triangulates the soundings of
-  the survey day and interpolates the depth linearly onto a regular grid (`bed_grid_spacing`, 0.5 m by default), in
-  metres in the local UTM zone. Grid points farther than `bed_max_distance` (4 m by default) from a sounding are left
-  out, so the bed is not invented across gaps the survey did not cover.
+  the survey day (or location) and interpolates the depth linearly onto a regular grid (`bed_grid_spacing`, 0.5 m by
+  default), in metres in the local UTM zone. A triangle of the triangulation is filled when it joins two different
+  passes of the survey and none of its sides is longer than `bed_max_gap` (30 m by default). The bed is therefore
+  continuous between neighbouring passes, but it does not bridge wider gaps, and it is never extended beyond the
+  outermost passes, because the triangles only exist between soundings. Nothing is filled beside a lone pass, which
+  shows only its measured soundings: values there could only be carried sideways from that one pass. Setting
+  `bed_max_distance` above 0 adds a strip of that width around every sounding; beside a lone pass, its values come from
+  triangles made of two neighbouring soundings of the pass and one sounding of the nearest other line, however far away.
 
-Drag to rotate, scroll or pinch to zoom, and right-drag or two-finger-drag to move. The panel at the bottom right sets
-the vertical exaggeration (20× by default; survey areas are much wider than they are deep), the point size, which
+  Two soundings count as different passes when they come from different lines or survey days, or when the boat
+  travelled more than `bed_pass_ratio` (2 by default) times the straight distance between them along its track, as
+  between the legs of a back-and-forth survey. A bend within one pass does not count, so the inside of a curve sailed
+  once is not filled.
+
+Drag to rotate, scroll or pinch to zoom, and right-drag or two-finger-drag to move. A basemap is laid as a flat sheet at the water surface around the survey, with the surveyed area cut out of it so the
+bed shows through. The surveyed area is the outline of the survey: every triangle joining soundings with no side longer
+than `bed_max_gap`, including the holes inside the bed where nothing is interpolated, so no part of the basemap is left
+inside it. **Water surface** draws a transparent surface over the same outline, so it never extends beyond the survey. The **Basemap at the water surface** menu offers the same basemaps as the map, and **None (plain
+background)** for the bed alone over a grid. Until the visitor picks one there, it follows the basemap of the map; their
+choice is then remembered in their browser. The tiles are downloaded by the visitor's browser when the 3D view opens,
+like the map's, and are credited in the corner.
+
+Survey areas are much wider than they are deep, so the depths are exaggerated. The 3D view opens with the exaggeration
+at which the deepest point lies a tenth of the survey's width below the water surface (for example 9× for the
+Credit River survey, about 160 m across and 1.8 m deep), between 1× and 30×, or with the number set in
+`vertical_exaggeration`; the slider changes it between 1× and 60×. The panel at the bottom right sets
+the vertical exaggeration, the point size, which
 clouds are shown, and a transparent water surface. **Oblique**, **From above** and **From the side** reset the camera.
 Hovering over a point says whether it is a measured sounding (with its line) or an interpolated estimate, and gives its
-depth. The colour scale follows the **This view** / **All data** choice of the map: this survey day's depths, or the
+depth and, for an estimate, its distance from the nearest sounding. With **Fade estimates far from soundings** (on by
+default), interpolated points fade towards the background with distance from the nearest sounding, reaching their
+faintest at a third of `bed_max_gap`, so the parts of the bed that rest on few measurements look less certain. The colour scale follows the **This view** / **All data** choice of the map: this survey day's depths, or the
 scale shared by all surveys.
 
-**Interpolated bed (CSV)** downloads the grid as `Latitude`, `Longitude`, `Interpolated depth`. The interpolated values
+**Interpolated bed (CSV)** downloads the grid as `Latitude`, `Longitude`, `Interpolated depth` and `Distance to
+nearest sounding` (metres). The interpolated values
 are estimates, not measurements: a single-beam survey measures one depth per sounding, and the bed between survey
 lines is only as good as the line spacing allows. The 3D view and the CSV say so. Each survey day is interpolated on its
 own, so surveys of the same place on different dates are never blended. The 3D library is only downloaded when a
@@ -318,7 +348,10 @@ Paths are relative to the JSON file, which stays at the top of the repository. E
 | `start_with_list_collapsed` | `true` | Opens the line list collapsed. |
 | `interpolate_bed` | `true` | Interpolates the bed of each survey day for the 3D view. With `false`, no 3D view is offered. |
 | `bed_grid_spacing` | `0.5` | Grid spacing of the interpolated bed, in metres. |
-| `bed_max_distance` | `4` | The bed is only interpolated within this distance (metres) of a measured sounding. |
+| `bed_max_distance` | `0` | When above 0, the bed is also filled within this distance (metres) of every sounding, even beside a lone pass, where the values are carried sideways from that pass. |
+| `bed_max_gap` | `30` | Largest gap (metres) between passes that the bed is filled across. Set it a little above the usual line spacing of the surveys. |
+| `bed_pass_ratio` | `2` | Two soundings of one line count as different passes when the track between them is more than this many times their straight distance apart. |
+| `vertical_exaggeration` | `auto` | Starting vertical exaggeration of the 3D view: `auto` (the deepest point a tenth of the survey's width below the water surface, 1× to 30×) or a number such as `5`. |
 | `bed_max_points` | `250000` | Largest number of interpolated points per survey day. When a survey would need more, the build widens the grid spacing and says so. |
 
 ### `map_variables`
@@ -381,8 +414,8 @@ notes under the colour scale for GNSS height and bed elevation.
    lines that cross midnight); removes invalid soundings; and merges the metadata.
 5. Writes, for each line, the map points (`docs/data/points/`), a full-resolution CSV (`docs/data/csv/`), a copy of the
    raw file (`docs/data/raw/`) and its rows in `docs/data/all_lines.csv`.
-6. Interpolates the bed of each survey day (date, area and location) and writes it to `docs/data/bed/`: a JSON file
-   for the 3D view and a CSV file for download.
+6. Interpolates the bed of each survey day (date, area and location) and of each named location (all its survey days
+   together), and writes it to `docs/data/bed/`: a JSON file for the 3D view and a CSV file for download.
 7. Writes `docs/data/index.json`, the summary the website reads first: lines, survey days with a 3D view,
    statistics, simplified tracks, metadata, colour scales and download links.
 

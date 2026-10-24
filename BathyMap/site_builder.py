@@ -9,8 +9,8 @@ import shutil
 import datetime
 import numpy as np
 import pandas as pd
-from scipy.interpolate import griddata
-from scipy.spatial import cKDTree
+from scipy.interpolate import LinearNDInterpolator
+from scipy.spatial import cKDTree, Delaunay
 from pyproj import Transformer
 import logging
 logger = logging.getLogger(__name__)
@@ -242,18 +242,38 @@ class BathymetrySiteBuilder(object):
             self.bed_grid_spacing = float(loaded_file.pop('bed_grid_spacing'))
 
         if loaded_file.get('bed_max_distance') is None:
-            print('bed max distance set to 4 m (the bed is only interpolated within this distance of a sounding). If you wish to change this default value, add bed_max_distance to the inputs provided in the JSON file')
-            self.bed_max_distance = 4.0
+            print('bed max distance set to 0 m (the bed is only filled between two passes of the survey, never beside a lone pass). If you wish to change this default value, add bed_max_distance to the inputs provided in the JSON file')
+            self.bed_max_distance = 0.0
         else:
             self.bed_max_distance = float(loaded_file.pop('bed_max_distance'))
+
+        if loaded_file.get('bed_max_gap') is None:
+            print('bed max gap set to 30 m (the bed is filled between passes of the survey up to this distance apart). If you wish to change this default value, add bed_max_gap to the inputs provided in the JSON file')
+            self.bed_max_gap = 30.0
+        else:
+            self.bed_max_gap = float(loaded_file.pop('bed_max_gap'))
+
+        if loaded_file.get('bed_pass_ratio') is None:
+            print('bed pass ratio set to 2 (two soundings are on different passes when the track between them is more than twice the distance between them). If you wish to change this default value, add bed_pass_ratio to the inputs provided in the JSON file')
+            self.bed_pass_ratio = 2.0
+        else:
+            self.bed_pass_ratio = float(loaded_file.pop('bed_pass_ratio'))
+
+        if loaded_file.get('vertical_exaggeration') is None:
+            print('vertical exaggeration set to "auto" (the deepest point of each 3D view lies a tenth of its width below the water surface). If you wish to change this default value, add vertical_exaggeration to the inputs provided in the JSON file')
+            self.vertical_exaggeration = 'auto'
+        else:
+            self.vertical_exaggeration = loaded_file.pop('vertical_exaggeration')
+        if self.vertical_exaggeration != 'auto' and not (isinstance(self.vertical_exaggeration, (int, float)) and self.vertical_exaggeration >= 1):
+            raise ValueError('vertical_exaggeration must be "auto" or a number of at least 1')
 
         if loaded_file.get('bed_max_points') is None:
             print('bed max points set to 250000 per survey day (the grid spacing is widened when a survey would need more). If you wish to change this default value, add bed_max_points to the inputs provided in the JSON file')
             self.bed_max_points = 250000
         else:
             self.bed_max_points = int(loaded_file.pop('bed_max_points'))
-        if self.bed_grid_spacing <= 0 or self.bed_max_distance <= 0:
-            raise ValueError('bed_grid_spacing and bed_max_distance must be larger than zero')
+        if self.bed_grid_spacing <= 0 or self.bed_max_gap <= 0 or self.bed_max_distance < 0:
+            raise ValueError('bed_grid_spacing and bed_max_gap must be larger than zero, and bed_max_distance cannot be negative')
 
     def setup(self):
         """
@@ -674,13 +694,44 @@ class BathymetrySiteBuilder(object):
         backward = Transformer.from_crs('EPSG:{}'.format(epsg), 'EPSG:4326', always_xy=True)
         return forward, backward, epsg
 
+    def triangle_cells(self, corners_x, corners_y, spacing):
+        """
+        Returns the grid cells (integer column and row numbers, grid spacing "spacing") of the bounding boxes of the
+        given triangles, without repeats. corners_x and corners_y hold the three corners of each triangle (one row per
+        triangle). Returns None when there would be more than 50 million cells.
+        """
+        if len(corners_x) == 0:
+            return np.zeros((0, 2), dtype=np.int64)
+        column_min = np.floor(corners_x.min(axis=1) / spacing).astype(np.int64)
+        column_max = np.ceil(corners_x.max(axis=1) / spacing).astype(np.int64)
+        row_min = np.floor(corners_y.min(axis=1) / spacing).astype(np.int64)
+        row_max = np.ceil(corners_y.max(axis=1) / spacing).astype(np.int64)
+        columns = column_max - column_min + 1
+        counts = columns * (row_max - row_min + 1)
+        if counts.sum() > 50000000:
+            return None
+        triangle = np.repeat(np.arange(len(counts)), counts)
+        position = np.arange(counts.sum()) - np.repeat(np.cumsum(counts) - counts, counts)
+        cells = np.c_[column_min[triangle] + position % columns[triangle], row_min[triangle] + position // columns[triangle]]
+        return np.unique(cells, axis=0)
+
     def interpolate_survey_bed(self, soundings):
         """
-        Interpolates the depths of one survey day onto a regular grid in metres (UTM), linearly between neighbouring
-        soundings (Delaunay triangulation), and keeps only the grid points within self.bed_max_distance of a sounding.
+        Interpolates the depths of one survey day (or location) onto a regular grid in metres (UTM), linearly inside the
+        triangles of a Delaunay triangulation of the soundings. A grid point is kept when it lies
+        - inside a triangle that joins two different passes of the survey and whose longest side is at most
+          self.bed_max_gap, so the bed is filled between neighbouring passes but not across wide gaps, and never
+          beyond the outermost passes (triangles only exist between soundings); or
+        - within self.bed_max_distance of a sounding, inside the triangulation (0 by default, so nothing is filled beside
+          a lone pass: there, the values would be carried sideways from that pass, pulled by whatever distant sounding
+          completes the triangle).
+        Two corners of a triangle belong to different passes when they come from different lines, or when the distance
+        travelled along the track between them is more than self.bed_pass_ratio times the straight distance between
+        them (the boat went away and came back, as between the legs of a back-and-forth survey).
+        soundings holds Latitude, Longitude, Depth and Line index (the line of each sounding, in the order sailed).
         The grid spacing is self.bed_grid_spacing, widened when the survey would need more than self.bed_max_points
-        points. Returns a dictionary with the grid, the projected soundings and the projection, or None when the
-        soundings cannot be triangulated (fewer than three, or all on one line).
+        points. Returns a dictionary with the grid, the distance from each grid point to the nearest sounding, and the
+        projection, or None when the soundings cannot be triangulated (fewer than three, or all on one straight line).
         """
         if len(soundings) < 3:
             return None
@@ -688,27 +739,72 @@ class BathymetrySiteBuilder(object):
         easting, northing = forward.transform(soundings['Longitude'].values, soundings['Latitude'].values)
         x0, y0 = float(np.mean(easting)), float(np.mean(northing))
         x, y, z = easting - x0, northing - y0, soundings['Depth'].values.astype(float)
+        if 'Line index' in soundings.columns:
+            line_index = soundings['Line index'].values
+        else:
+            line_index = np.zeros(len(x), dtype=int)
+        step = np.r_[0.0, np.hypot(np.diff(x), np.diff(y))]
+        step[np.r_[True, line_index[1:] != line_index[:-1]]] = 0.0
+        along_track = pd.Series(step).groupby(line_index).cumsum().values
+        try:
+            triangulation = Delaunay(np.c_[x, y])
+        except Exception as error:
+            print('the bed could not be interpolated:', error)
+            return None
+        corners = triangulation.simplices
+        corners_x, corners_y = x[corners], y[corners]
+        longest_side = np.zeros(len(corners))
+        between_passes = np.zeros(len(corners), dtype=bool)
+        for first, second in [(0, 1), (1, 2), (0, 2)]:
+            a, b = corners[:, first], corners[:, second]
+            straight = np.hypot(x[a] - x[b], y[a] - y[b])
+            longest_side = np.maximum(longest_side, straight)
+            different_pass = (line_index[a] != line_index[b]) | (np.abs(along_track[a] - along_track[b]) > self.bed_pass_ratio * straight + 1.0)
+            between_passes = between_passes | different_pass
+        filled = between_passes & (longest_side <= self.bed_max_gap)
         tree = cKDTree(np.c_[x, y])
         spacing = self.bed_grid_spacing
         while True:
-            grid_x, grid_y = np.meshgrid(np.arange(x.min(), x.max() + spacing, spacing), np.arange(y.min(), y.max() + spacing, spacing))
-            distance, _ = tree.query(np.c_[grid_x.ravel(), grid_y.ravel()])
-            near = distance <= self.bed_max_distance
-            if near.sum() <= self.bed_max_points:
+            # Candidate grid cells: the bounding boxes of the filled triangles, and a band around every sounding. Cells
+            # are never generated over the whole survey area, so surveys far apart cost nothing for the space between.
+            filled_cells = self.triangle_cells(corners_x[filled], corners_y[filled], spacing)
+            if self.bed_max_distance > 0:
+                reach = int(math.ceil(self.bed_max_distance / spacing))
+                offset_i, offset_j = np.meshgrid(np.arange(-reach, reach + 1), np.arange(-reach, reach + 1))
+                inside = (offset_i ** 2 + offset_j ** 2) * spacing ** 2 <= (self.bed_max_distance + spacing) ** 2
+                offsets = np.c_[offset_i[inside], offset_j[inside]]
+                base_cells = np.unique(np.c_[np.round(x / spacing), np.round(y / spacing)].astype(np.int64), axis=0)
+            else:
+                offsets = np.zeros((0, 2), dtype=np.int64)
+                base_cells = np.zeros((0, 2), dtype=np.int64)
+            if filled_cells is None or len(base_cells) * len(offsets) > 30000000:
+                spacing = spacing * 1.5
+                continue
+            band_cells = (base_cells[:, None, :] + offsets[None, :, :]).reshape(-1, 2)
+            cells = np.unique(np.r_[filled_cells, band_cells], axis=0)
+            cell_x, cell_y = cells[:, 0] * spacing, cells[:, 1] * spacing
+            triangle = triangulation.find_simplex(np.c_[cell_x, cell_y])
+            distance, _ = tree.query(np.c_[cell_x, cell_y])
+            in_filled = np.zeros(len(cells), dtype=bool)
+            in_filled[triangle >= 0] = filled[triangle[triangle >= 0]]
+            keep = (triangle >= 0) & (in_filled | ((self.bed_max_distance > 0) & (distance <= self.bed_max_distance)))
+            if keep.sum() <= self.bed_max_points:
                 break
             spacing = spacing * 1.5
         if spacing != self.bed_grid_spacing:
             print('the bed grid spacing was widened to', round(spacing, 2), 'm to stay within bed_max_points')
-        try:
-            grid_z = griddata((x, y), z, (grid_x.ravel()[near], grid_y.ravel()[near]), method='linear')
-        except Exception as error:
-            print('the bed could not be interpolated:', error)
-            return None
-        keep = ~np.isnan(grid_z)
+        grid_z = LinearNDInterpolator(triangulation, z)(np.c_[cell_x[keep], cell_y[keep]])
+        valid = ~np.isnan(grid_z)
         bed = {}
-        bed['x'] = grid_x.ravel()[near][keep]
-        bed['y'] = grid_y.ravel()[near][keep]
-        bed['z'] = grid_z[keep]
+        bed['x'] = cell_x[keep][valid]
+        bed['y'] = cell_y[keep][valid]
+        bed['z'] = grid_z[valid]
+        bed['distance'] = distance[keep][valid]
+        # outline of the surveyed area: every triangle with no side longer than bed_max_gap, filled or not (the holes
+        # inside the bed included); the 3D view cuts it out of the basemap and draws the water surface over it
+        outline = corners[longest_side <= self.bed_max_gap]
+        used, outline_triangles = np.unique(outline.ravel(), return_inverse=True)
+        bed['outline'] = {'x': x[used], 'y': y[used], 'triangles': outline_triangles}
         bed['spacing'] = spacing
         bed['origin'] = (x0, y0)
         bed['epsg'] = epsg
@@ -716,22 +812,50 @@ class BathymetrySiteBuilder(object):
         bed['forward'] = forward
         return bed
 
+    def local_georeference(self, bed):
+        """
+        Returns the affine conversion from longitude and latitude to the local metres of a bed (x east and y north of
+        the centre of the survey, in its UTM zone): x = x[0] + x[1] * longitude + x[2] * latitude, and the same for y.
+        It is fitted over the bed and a wide margin around it, for placing basemap tiles in the 3D view; over a few
+        kilometres it is accurate to a few centimetres.
+        """
+        x0, y0 = bed['origin']
+        span = max(float(bed['x'].max() - bed['x'].min()), float(bed['y'].max() - bed['y'].min()), 100.0)
+        sample_x, sample_y = np.meshgrid(np.linspace(bed['x'].min() - 2 * span, bed['x'].max() + 2 * span, 9),
+                                         np.linspace(bed['y'].min() - 2 * span, bed['y'].max() + 2 * span, 9))
+        longitude, latitude = bed['backward'].transform(sample_x.ravel() + x0, sample_y.ravel() + y0)
+        design = np.c_[np.ones(len(longitude)), longitude, latitude]
+        coefficients_x = np.linalg.lstsq(design, sample_x.ravel(), rcond=None)[0]
+        coefficients_y = np.linalg.lstsq(design, sample_y.ravel(), rcond=None)[0]
+        return {'x': [float(c) for c in coefficients_x], 'y': [float(c) for c in coefficients_y]}
+
     def write_survey_beds(self, line_records, survey_soundings):
         """
-        Writes, for each survey day, the interpolated bed and the soundings drawn with it in the 3D view
-        (data/bed/<survey>.json, coordinates in metres from the centre of the survey), and the interpolated bed as a
-        CSV file with latitude, longitude and interpolated depth (data/bed/<survey>.csv). Returns the list of survey
-        days written, for the index.
+        Writes, for each survey day and each named location (all its survey days together), the interpolated bed and
+        the soundings drawn with it in the 3D view (data/bed/<survey>.json, coordinates in metres from the centre of
+        the survey), and the interpolated bed as a CSV file with latitude, longitude and interpolated depth
+        (data/bed/<survey>.csv). Returns the list of beds written, for the index.
         """
         beds = []
-        for key in survey_soundings:
+        day_keys = [key for key in survey_soundings if survey_soundings[key][0]['kind'] == 'day']
+        location_keys = [key for key in survey_soundings if survey_soundings[key][0]['kind'] == 'location']
+        for key in day_keys + location_keys:
             parts = survey_soundings[key]
-            soundings = pd.concat([part['soundings'] for part in parts], ignore_index=True)
+            soundings = pd.concat([part['soundings'].assign(**{'Line index': px}) for px, part in enumerate(parts)], ignore_index=True)
             survey_id = parts[0]['survey_id']
+            # a location surveyed on a single day has the same bed as that day: reuse its files
+            same_day = [bed_record for bed_record in beds if bed_record['kind'] == 'day' and bed_record['lines'] == [part['line_id'] for part in parts]]
+            if parts[0]['kind'] == 'location' and len(same_day) == 1:
+                record = dict(same_day[0])
+                record['key'] = key
+                record['kind'] = 'location'
+                beds.append(record)
+                print('the bed of', key.replace('|', ' | '), 'is the bed of its only survey day')
+                continue
             print('interpolating the bed of', key.replace('|', ' | '), 'from', len(soundings), 'soundings')
             bed = self.interpolate_survey_bed(soundings)
             if bed is None or len(bed['z']) == 0:
-                print('no bed was interpolated for this survey day')
+                print('no bed was interpolated for', key.replace('|', ' | '))
                 continue
             x0, y0 = bed['origin']
             shown = {'x': [], 'y': [], 'z': [], 'line': []}
@@ -743,24 +867,33 @@ class BathymetrySiteBuilder(object):
                 shown['y'].extend(np.round(northing - y0, 2).tolist())
                 shown['z'].extend(np.round(thinned['Depth'].values, 3).tolist())
                 shown['line'].extend([px] * len(thinned))
-                line_names.append(part['line'])
+                line_names.append(part['line'] if part['kind'] == 'day' else '{} ({})'.format(part['line'], part['date']))
             depths = soundings['Depth'].values
             points = {}
             points['spacing'] = round(bed['spacing'], 3)
             points['max_distance'] = self.bed_max_distance
+            points['max_gap'] = self.bed_max_gap
             points['epsg'] = bed['epsg']
             points['range'] = [round(float(np.percentile(depths, 2)), 3), round(float(np.percentile(depths, 98)), 3)]
-            points['grid'] = {'x': np.round(bed['x'], 2).tolist(), 'y': np.round(bed['y'], 2).tolist(), 'z': np.round(bed['z'], 3).tolist()}
+            points['grid'] = {'x': np.round(bed['x'], 2).tolist(), 'y': np.round(bed['y'], 2).tolist(), 'z': np.round(bed['z'], 3).tolist(),
+                              'd': np.round(bed['distance'], 1).tolist()}
             points['soundings'] = shown
             points['lines'] = line_names
+            points['georef'] = self.local_georeference(bed=bed)
+            points['outline'] = {'x': np.round(bed['outline']['x'], 2).tolist(), 'y': np.round(bed['outline']['y'], 2).tolist(),
+                                 'triangles': [int(index) for index in bed['outline']['triangles']]}
             with open(os.path.join(self.output_directory, 'data', 'bed', survey_id + '.json'), 'w') as f:
                 json.dump(points, f, separators=(',', ':'))
             longitude, latitude = bed['backward'].transform(bed['x'] + x0, bed['y'] + y0)
-            bed_csv = pd.DataFrame({'Latitude': np.round(latitude, 9), 'Longitude': np.round(longitude, 9), 'Interpolated depth': np.round(bed['z'], 3)})
+            bed_csv = pd.DataFrame({'Latitude': np.round(latitude, 9), 'Longitude': np.round(longitude, 9), 'Interpolated depth': np.round(bed['z'], 3),
+                                    'Distance to nearest sounding': np.round(bed['distance'], 2)})
             bed_csv.to_csv(os.path.join(self.output_directory, 'data', 'bed', survey_id + '.csv'), index=False)
             record = {}
             record['key'] = key
             record['id'] = survey_id
+            record['kind'] = parts[0]['kind']
+            record['lines'] = [part['line_id'] for part in parts]
+            record['dates'] = sorted(set([part['date'] for part in parts]))
             record['points'] = int(len(bed['z']))
             record['soundings'] = int(len(soundings))
             record['spacing'] = points['spacing']
@@ -850,6 +983,8 @@ class BathymetrySiteBuilder(object):
         settings['carto_api_key'] = self.carto_api_key
         settings['start_with_list_collapsed'] = self.start_with_list_collapsed
         settings['bed_max_distance'] = self.bed_max_distance
+        settings['bed_max_gap'] = self.bed_max_gap
+        settings['vertical_exaggeration'] = self.vertical_exaggeration
         settings['bbox'] = overall_bbox
         settings['combined_csv'] = 'data/all_lines.csv' if self.write_combined_csv and len(line_records) > 0 else None
         settings['generated'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -888,9 +1023,16 @@ class BathymetrySiteBuilder(object):
                                                        raw_link=raw_link))
             all_depths.extend(soundings['Depth'].tolist())
             if self.interpolate_bed:
-                key, survey_id = self.survey_key(line_records[-1])
-                survey_soundings.setdefault(key, []).append({'survey_id': survey_id, 'line': line_records[-1]['line'],
-                                                             'soundings': soundings[['Latitude', 'Longitude', 'Depth']].reset_index(drop=True)})
+                # each line belongs to the bed of its survey day and, when it has a location, to the bed of the location
+                line_record = line_records[-1]
+                part = {'line': line_record['line'], 'line_id': line_record['id'], 'date': line_record['date'],
+                        'soundings': soundings[['Latitude', 'Longitude', 'Depth']].reset_index(drop=True)}
+                key, survey_id = self.survey_key(line_record)
+                survey_soundings.setdefault(key, []).append(dict(part, survey_id=survey_id, kind='day'))
+                location = str(line_record['metadata'].get('location', ''))
+                if location:
+                    location_id = 'location__' + re.sub(r'[^A-Za-z0-9_.-]+', '-', location).strip('-')
+                    survey_soundings.setdefault('loc|' + location, []).append(dict(part, survey_id=location_id, kind='location'))
             for map_variable in self.map_variables:
                 values = self.map_variable_values(soundings=soundings, column=map_variable['column'], scale=map_variable.get('scale', 1), from_line_start=map_variable.get('from_line_start', False))
                 if values is not None:
@@ -903,7 +1045,7 @@ class BathymetrySiteBuilder(object):
         index['site'] = self.site_settings(line_records=line_records, all_depths=all_depths, all_values=all_values)
         index['lines'] = line_records
         if self.interpolate_bed:
-            print('============================================ interpolating the bed of', len(survey_soundings), 'survey days')
+            print('============================================ interpolating the bed of', len(survey_soundings), 'survey days and locations')
             index['beds'] = self.write_survey_beds(line_records=line_records, survey_soundings=survey_soundings)
         else:
             index['beds'] = []
