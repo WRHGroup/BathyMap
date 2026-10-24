@@ -64,6 +64,7 @@
 
   <div class="map-wrap">
     <div id="map" role="application" aria-label="Map of survey lines"></div>
+    <p id="map-note" class="map-note" hidden></p>
     <div id="view-tabs" class="view-tabs" role="tablist" aria-label="View" hidden>
       <button type="button" role="tab" id="tab-map" aria-selected="true">Map</button>
       <button type="button" role="tab" id="tab-3d" aria-selected="false">3D bed</button>
@@ -84,14 +85,18 @@
           <div id="ticks3d" class="legend-ticks"></div>
           <label class="toggle3d"><input type="checkbox" id="show-bed" checked><span><span class="swatch3d"></span>Interpolated bed</span><span id="n-bed" class="data"></span></label>
           <label class="toggle3d"><input type="checkbox" id="show-pings" checked><span><span class="swatch3d ping"></span>Measured soundings</span><span id="n-pings" class="data"></span></label>
+          <div class="select3d"><label for="base3d">Basemap at the water surface</label><select id="base3d" class="legend-select"><option value="">None (plain background)</option></select></div>
+          <p id="basemap-note" class="caveat3d" hidden></p>
           <label class="toggle3d"><input type="checkbox" id="show-water"><span>Water surface</span><span></span></label>
-          <div class="slider3d"><label for="exag3d">Vertical exaggeration</label><output id="exag3d-out" for="exag3d">20×</output><input type="range" id="exag3d" min="1" max="60" step="1" value="20"></div>
+          <label class="toggle3d"><input type="checkbox" id="fade3d" checked><span>Fade estimates far from soundings</span><span></span></label>
+          <div class="slider3d"><label for="exag3d">Vertical exaggeration</label><output id="exag3d-out" for="exag3d">10×</output><input type="range" id="exag3d" min="1" max="60" step="1" value="10"></div>
           <div class="slider3d"><label for="size3d">Point size</label><output id="size3d-out" for="size3d">1.0</output><input type="range" id="size3d" min="0.4" max="2.5" step="0.1" value="1"></div>
           <a id="bed-csv" class="button ghost" href="#" download>Interpolated bed (CSV)</a>
           <p id="caveat3d" class="caveat3d"></p>
         </div>
       </details>
       <p id="message3d" class="message3d" hidden></p>
+      <p id="attr3d" class="attr3d" hidden></p>
     </div>
     <div id="probe" class="probe" hidden></div>
     <div id="select-bar" class="select-bar" hidden aria-live="polite"></div>

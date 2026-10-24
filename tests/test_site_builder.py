@@ -184,20 +184,30 @@ def test_location_metadata():
 
 def test_survey_beds():
     """
-    Checks that the bed of each survey day is interpolated, stays within bed_max_distance of a sounding, and is
-    written as the JSON file of the 3D view and as a CSV file with latitude, longitude and interpolated depth.
+    The sample lines are short single passes, so by default (bed_max_distance 0) they get no bed at all. With a strip of
+    bed_max_distance around the soundings, checks that the bed of each survey day is interpolated and written as the
+    JSON file of the 3D view and as a CSV file with latitude, longitude, interpolated depth and distance to the nearest
+    sounding.
     """
     SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
     SiteModel.setup()
+    assert(SiteModel.bed_max_distance == 0)
     index = SiteModel.execute()
-    assert(len(index['beds']) == 2)
+    assert(len(index['beds']) == 0)
+    SiteModel.bed_max_distance = 4.0
+    index = SiteModel.execute()
+    # two survey days (the sample lines share a date, but L0002 has the location "Test pond") and the location
+    # "Test pond", which was surveyed on that one day only, so it reuses that day's files
+    assert(len(index['beds']) == 3)
+    location_beds = [bed_record for bed_record in index['beds'] if bed_record['kind'] == 'location']
+    assert(len(location_beds) == 1 and location_beds[0]['key'] == 'loc|Test pond')
     for bed_record in index['beds']:
         with open(os.path.join(SiteModel.output_directory, bed_record['files']['points'])) as f:
             bed = json.load(f)
         assert(len(bed['grid']['z']) == bed_record['points'])
         assert(len(bed['soundings']['z']) > 0)
         # all soundings of the survey day, in the same local coordinates as the grid
-        survey_lines = [line for line in index['lines'] if SiteModel.survey_key(line)[0] == bed_record['key']]
+        survey_lines = [line for line in index['lines'] if line['id'] in bed_record['lines']]
         soundings = pd.concat([pd.read_csv(os.path.join(SiteModel.output_directory, line['files']['csv'])) for line in survey_lines])
         assert(len(soundings) == bed_record['soundings'])
         forward, backward, epsg = SiteModel.utm_transformer(soundings['Longitude'].mean(), soundings['Latitude'].mean())
@@ -205,10 +215,62 @@ def test_survey_beds():
         sounding_points = np.c_[easting - easting.mean(), northing - northing.mean()]
         grid_points = np.c_[bed['grid']['x'], bed['grid']['y']]
         nearest = np.sqrt(((grid_points[:, None, :] - sounding_points[None, :, :]) ** 2).sum(axis=2)).min(axis=1)
+        assert(np.abs(nearest - np.array(bed['grid']['d'])).max() <= 0.06)
         assert(nearest.max() <= SiteModel.bed_max_distance + 0.01)
+        # the stored conversion from longitude and latitude to the metres of the bed matches the projection
+        georef = bed['georef']
+        local_x = georef['x'][0] + georef['x'][1] * soundings['Longitude'].values + georef['x'][2] * soundings['Latitude'].values
+        local_y = georef['y'][0] + georef['y'][1] * soundings['Longitude'].values + georef['y'][2] * soundings['Latitude'].values
+        assert(np.hypot(local_x - sounding_points[:, 0], local_y - sounding_points[:, 1]).max() < 0.05)
+        # the outline of the surveyed area: triangles of soundings with no side longer than bed_max_gap
+        outline = bed['outline']
+        assert(len(outline['triangles']) % 3 == 0 and len(outline['triangles']) > 0)
+        outline_points = np.c_[outline['x'], outline['y']][np.array(outline['triangles']).reshape(-1, 3)]
+        sides = np.linalg.norm(outline_points - np.roll(outline_points, 1, axis=1), axis=2)
+        assert(sides.max() <= SiteModel.bed_max_gap + 0.01)
         # linear interpolation never goes beyond the measured depths
         assert(min(bed['grid']['z']) >= soundings['Depth'].min() - 0.001)
         assert(max(bed['grid']['z']) <= soundings['Depth'].max() + 0.001)
         bed_csv = pd.read_csv(os.path.join(SiteModel.output_directory, bed_record['files']['csv']))
-        assert(list(bed_csv.columns) == ['Latitude', 'Longitude', 'Interpolated depth'])
+        assert(list(bed_csv.columns) == ['Latitude', 'Longitude', 'Interpolated depth', 'Distance to nearest sounding'])
         assert(len(bed_csv) == bed_record['points'])
+
+
+def test_bed_fills_between_passes():
+    """
+    Checks the fill rule on a made-up survey: back-and-forth legs 15 m apart are filled in between, while nothing is
+    filled around a line 90 m away (farther than bed_max_gap), and nothing beyond the outermost legs.
+    """
+    from pyproj import Transformer
+    SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
+    SiteModel.setup()
+    SiteModel.bed_max_gap = 30.0
+    track = []
+    for leg in range(4):
+        x_values = np.arange(0, 200, 1.0)
+        if leg % 2 == 1:
+            x_values = x_values[::-1]
+        track += [(x_value, leg * 15.0) for x_value in x_values]
+    track = np.array(track)
+    isolated = np.c_[np.arange(0, 100, 1.0), np.full(100, 135.0)]
+    to_degrees = Transformer.from_crs('EPSG:32617', 'EPSG:4326', always_xy=True)
+
+    def soundings_frame(points, line_index):
+        longitude, latitude = to_degrees.transform(700000 + points[:, 0], 4972000 + points[:, 1])
+        return pd.DataFrame({'Latitude': latitude, 'Longitude': longitude, 'Depth': 2 + points[:, 0] / 100.0, 'Line index': line_index})
+    soundings = pd.concat([soundings_frame(track, 0), soundings_frame(isolated, 1)], ignore_index=True)
+    bed = SiteModel.interpolate_survey_bed(soundings)
+    to_metres = Transformer.from_crs('EPSG:4326', 'EPSG:32617', always_xy=True)
+    easting, northing = to_metres.transform(soundings['Longitude'].values, soundings['Latitude'].values)
+    north = bed['y'] + bed['origin'][1] - 4972000
+    east = bed['x'] + bed['origin'][0] - 700000
+    # filled midway between the legs, where the nearest sounding is 7.5 m away
+    between_legs = (north > 5) & (north < 10) & (east > 20) & (east < 180)
+    assert(between_legs.sum() > 1000)
+    assert(bed['distance'][between_legs].max() > 7)
+    # nothing around the isolated line, nor between it and the survey
+    assert((north > 50).sum() == 0)
+    # nothing beyond the outermost legs
+    assert(north.min() >= -1e-6 and east.min() >= -1e-6 and east.max() <= 199 + 1e-6)
+    # linear interpolation stays within the measured depths
+    assert(bed['z'].min() >= soundings['Depth'].min() - 1e-9 and bed['z'].max() <= soundings['Depth'].max() + 1e-9)

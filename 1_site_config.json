@@ -144,6 +144,9 @@
     "start_with_list_collapsed": true,
     "interpolate_bed": true,
     "bed_grid_spacing": 0.5,
-    "bed_max_distance": 4,
+    "bed_max_distance": 0,
+    "bed_max_gap": 30,
+    "bed_pass_ratio": 2,
+    "vertical_exaggeration": "auto",
     "bed_max_points": 250000
 }
