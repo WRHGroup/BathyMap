@@ -12,7 +12,7 @@ setup(
     author='Mohammed Basheer',
     author_email='mohammedadamabbaker@gmail.com',
     license='GNU',
-    install_requires=['click', 'pandas', 'numpy'],
+    install_requires=['click', 'pandas', 'numpy', 'scipy', 'pyproj'],
     packages=find_packages(exclude=['tests']),
     entry_points={
         'console_scripts': ['BathyMap=BathyMap.cli:start_cli'],

@@ -141,5 +141,9 @@
         }
     ],
     "carto_api_key": "",
-    "start_with_list_collapsed": true
+    "start_with_list_collapsed": true,
+    "interpolate_bed": true,
+    "bed_grid_spacing": 0.5,
+    "bed_max_distance": 4,
+    "bed_max_points": 250000
 }

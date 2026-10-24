@@ -180,3 +180,35 @@ def test_location_metadata():
         locations[line['line']] = line['metadata'].get('location')
     assert(locations['L0002'] == 'Test pond')
     assert(locations['L0001'] is None)
+
+
+def test_survey_beds():
+    """
+    Checks that the bed of each survey day is interpolated, stays within bed_max_distance of a sounding, and is
+    written as the JSON file of the 3D view and as a CSV file with latitude, longitude and interpolated depth.
+    """
+    SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
+    SiteModel.setup()
+    index = SiteModel.execute()
+    assert(len(index['beds']) == 2)
+    for bed_record in index['beds']:
+        with open(os.path.join(SiteModel.output_directory, bed_record['files']['points'])) as f:
+            bed = json.load(f)
+        assert(len(bed['grid']['z']) == bed_record['points'])
+        assert(len(bed['soundings']['z']) > 0)
+        # all soundings of the survey day, in the same local coordinates as the grid
+        survey_lines = [line for line in index['lines'] if SiteModel.survey_key(line)[0] == bed_record['key']]
+        soundings = pd.concat([pd.read_csv(os.path.join(SiteModel.output_directory, line['files']['csv'])) for line in survey_lines])
+        assert(len(soundings) == bed_record['soundings'])
+        forward, backward, epsg = SiteModel.utm_transformer(soundings['Longitude'].mean(), soundings['Latitude'].mean())
+        easting, northing = forward.transform(soundings['Longitude'].values, soundings['Latitude'].values)
+        sounding_points = np.c_[easting - easting.mean(), northing - northing.mean()]
+        grid_points = np.c_[bed['grid']['x'], bed['grid']['y']]
+        nearest = np.sqrt(((grid_points[:, None, :] - sounding_points[None, :, :]) ** 2).sum(axis=2)).min(axis=1)
+        assert(nearest.max() <= SiteModel.bed_max_distance + 0.01)
+        # linear interpolation never goes beyond the measured depths
+        assert(min(bed['grid']['z']) >= soundings['Depth'].min() - 0.001)
+        assert(max(bed['grid']['z']) <= soundings['Depth'].max() + 0.001)
+        bed_csv = pd.read_csv(os.path.join(SiteModel.output_directory, bed_record['files']['csv']))
+        assert(list(bed_csv.columns) == ['Latitude', 'Longitude', 'Interpolated depth'])
+        assert(len(bed_csv) == bed_record['points'])

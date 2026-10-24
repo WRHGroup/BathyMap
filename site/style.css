@@ -11,6 +11,9 @@
   --accent-soft: #f6e4ee;
   --track: #1d4a63;
   --shadow: 0 1px 2px rgba(15, 37, 51, 0.08), 0 6px 18px rgba(15, 37, 51, 0.10);
+  --stage: #e3ebef;
+  --stage-grid: #9fb3bf;
+  --water: #6fa8c7;
   --font-display: "Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
   --font-body: "Source Sans 3", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -29,6 +32,9 @@
     --accent-soft: #3a1830;
     --track: #9cc6dc;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 22px rgba(0, 0, 0, 0.35);
+    --stage: #18303f;
+    --stage-grid: #3d5a6b;
+    --water: #7fb6d6;
     color-scheme: dark;
   }
 }
@@ -43,6 +49,9 @@
   --accent-soft: #3a1830;
   --track: #9cc6dc;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 22px rgba(0, 0, 0, 0.35);
+  --stage: #18303f;
+  --stage-grid: #3d5a6b;
+  --water: #7fb6d6;
   color-scheme: dark;
 }
 
@@ -262,7 +271,8 @@ a { color: inherit; }
   cursor: pointer;
 }
 .zoom-to.location-title { align-items: center; gap: 0.5rem; }
-.zoom-to.group-title { flex-direction: column; }
+.zoom-to.group-title { flex-direction: column; overflow: hidden; }
+.zoom-to.group-title > * { max-width: 100%; }
 .zoom-to:hover h3, .zoom-to:hover .location-name { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 .zoom-to:focus-visible, .collapse:focus-visible, .text-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 .chev { width: 0.7rem; height: 0.7rem; flex: none; color: var(--muted); transform: rotate(90deg); transition: transform 0.12s ease; }
@@ -510,4 +520,58 @@ a { color: inherit; }
 }
 @media (prefers-reduced-motion: reduce) {
   .panel { transition: none; }
+}
+
+/* 3D view of the interpolated bed: covers the map while it is open */
+.view-tabs {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1200; display: flex;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; box-shadow: var(--shadow); overflow: hidden;
+}
+.view-tabs button { border: 0; background: none; padding: 0.45rem 0.9rem; font: 600 0.85rem/1 var(--font-display); letter-spacing: 0.03em; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.view-tabs button + button { border-left: 1px solid var(--rule); }
+.view-tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.view-tabs button:hover:not([aria-selected="true"]) { background: var(--paper); }
+.view3d { position: absolute; inset: 0; z-index: 1100; background: var(--stage); }
+.stage3d { position: absolute; inset: 0; }
+.stage3d canvas { display: block; touch-action: none; }
+.views3d { position: absolute; top: 12px; left: max(12px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; box-shadow: var(--shadow); overflow: hidden; }
+.views3d button { border: 0; background: none; padding: 0.4rem 0.6rem; font: 600 0.78rem/1 var(--font-display); letter-spacing: 0.03em; cursor: pointer; text-align: left; color: var(--ink); }
+.views3d button + button { border-top: 1px solid var(--rule); }
+.views3d button:hover { background: var(--paper); }
+.controls3d {
+  position: absolute; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  width: 17rem; max-width: calc(100% - 24px); max-height: calc(100% - 28px); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; box-shadow: var(--shadow); font-size: 0.85rem;
+}
+.controls3d summary { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.6rem 0.8rem; cursor: pointer; list-style: none; }
+.controls3d summary::-webkit-details-marker { display: none; }
+.bed-title { font: 600 0.95rem/1.2 var(--font-display); }
+.controls3d-body { display: flex; flex-direction: column; gap: 0.55rem; padding: 0 0.8rem 0.75rem; }
+#ramp3d { display: block; width: 100%; height: 12px; border-radius: 2px; }
+.controls3d .legend-ticks { margin-top: -0.3rem; }
+.toggle3d { display: grid; grid-template-columns: auto 1fr auto; gap: 0.5rem; align-items: center; cursor: pointer; }
+.toggle3d input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); }
+.toggle3d > span:nth-child(2) { display: inline-flex; align-items: center; gap: 0.4rem; }
+.toggle3d .data { font-size: 0.72rem; color: var(--muted); }
+.swatch3d { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: #7fcdbb; flex: none; }
+.swatch3d.ping { box-shadow: 0 0 0 2px var(--ink) inset; }
+.slider3d { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.5rem; align-items: center; }
+.slider3d input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--accent); }
+.slider3d output { font: 500 0.75rem/1 var(--font-data); }
+.controls3d .button { justify-content: center; font-size: 0.8rem; min-height: 2rem; }
+.caveat3d { margin: 0; font-size: 0.75rem; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 0.5rem; }
+.probe3d { pointer-events: none; }
+.probe3d .kind { font: 600 0.68rem/1.2 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.probe3d .kind.measured { color: var(--accent); }
+.message3d { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 22rem; margin: 0; padding: 0.8rem 1rem; text-align: center; background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; color: var(--muted); }
+.open-3d {
+  flex: none; display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.45rem; border-radius: 3px;
+  border: 1px solid var(--rule); background: var(--surface); color: var(--ink); font: 600 0.72rem/1 var(--font-display); letter-spacing: 0.04em; cursor: pointer;
+}
+.open-3d svg { width: 13px; height: 13px; color: var(--accent); }
+.open-3d:hover, .open-3d[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 760px) {
+  .view-tabs { left: auto; right: 56px; transform: none; }
+  .views3d { top: 56px; }
+  .controls3d { width: auto; left: max(12px, env(safe-area-inset-left, 0px)); max-height: 55%; }
 }

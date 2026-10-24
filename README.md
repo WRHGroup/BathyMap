@@ -21,6 +21,8 @@ an update means committing and pushing. There is no GitHub Actions workflow and 
   or by text, and has checkboxes that show or hide lines on the map one at a time or all at once.
 - Open a line to see its statistics, platform, sensor and other metadata, and download it as the original `.dep`
   file or as a CSV with decimal-degree coordinates.
+- Open any survey day in 3D: the measured soundings with an interpolated bed between them, to rotate and zoom, with an
+  adjustable vertical exaggeration, and the interpolated bed as a CSV download.
 - Draw a box or a polygon on the map and download every sounding inside it as a CSV.
 - Download every line in one CSV, and share a link straight to a line (the address ends with `#<line id>`).
 - Return to the full view with the **Zoom to all data** button under the zoom buttons.
@@ -36,8 +38,8 @@ BathyMap/
 │       ├── L0001_2026-10-16-00-24-42.dep
 │       └── L0002_2026-10-16-00-52-33.dep
 ├── docs/                   the published website, written by "BathyMap build"; never edit it by hand
-├── site/                   the website template (index.html, app.js, style.css, and the Leaflet map library
-│                           and fonts in site/vendor/), copied into docs/ on every build
+├── site/                   the website template (index.html, app.js, style.css, and in site/vendor/ the Leaflet
+│                           map library, the three.js 3D library and the fonts), copied into docs/ on every build
 ├── BathyMap/               the Python package behind the BathyMap command
 │   ├── cli.py
 │   └── site_builder.py
@@ -57,7 +59,9 @@ conda activate bathymap
 pip install -e .
 ```
 
-This installs the `BathyMap` command with its three requirements: click, pandas and numpy. The `-e` keeps the command
+This installs the `BathyMap` command with its requirements: click, pandas, numpy, scipy (for the interpolated bed) and
+pyproj (for converting coordinates to metres). After updating BathyMap to a version with new requirements, run
+`pip install -e .` again in the environment. The `-e` keeps the command
 linked to this folder, so changes to the code take effect without reinstalling. In every new terminal, run
 `conda activate bathymap` before using the command.
 
@@ -212,6 +216,34 @@ show or hide lines on the map: **All lines** at the top (only the lines matching
 one per location, one per survey day and one per line. A checkbox with a dash means some of its lines are hidden.
 Selecting a line opens its details above the list, and the list keeps its place.
 
+### 3D view of the bed
+
+Each survey day has a **3D** button next to its date in the list, and each line's details have **3D view of this survey
+day**. The 3D view replaces the map; the **Map** and **3D bed** tabs at the top switch between the two, and choosing a
+line, a location or **Zoom to all data** returns to the map.
+
+The view shows two point clouds, coloured by water depth:
+
+- **Measured soundings** (points with a dark rim): the soundings of the survey day, thinned like the map
+  (`max_map_points_per_line`).
+- **Interpolated bed** (plain points): the bed estimated between the soundings. The build triangulates the soundings of
+  the survey day and interpolates the depth linearly onto a regular grid (`bed_grid_spacing`, 0.5 m by default), in
+  metres in the local UTM zone. Grid points farther than `bed_max_distance` (4 m by default) from a sounding are left
+  out, so the bed is not invented across gaps the survey did not cover.
+
+Drag to rotate, scroll or pinch to zoom, and right-drag or two-finger-drag to move. The panel at the bottom right sets
+the vertical exaggeration (20× by default; survey areas are much wider than they are deep), the point size, which
+clouds are shown, and a transparent water surface. **Oblique**, **From above** and **From the side** reset the camera.
+Hovering over a point says whether it is a measured sounding (with its line) or an interpolated estimate, and gives its
+depth. The colour scale follows the **This view** / **All data** choice of the map: this survey day's depths, or the
+scale shared by all surveys.
+
+**Interpolated bed (CSV)** downloads the grid as `Latitude`, `Longitude`, `Interpolated depth`. The interpolated values
+are estimates, not measurements: a single-beam survey measures one depth per sounding, and the bed between survey
+lines is only as good as the line spacing allows. The 3D view and the CSV say so. Each survey day is interpolated on its
+own, so surveys of the same place on different dates are never blended. The 3D library is only downloaded when a
+visitor opens a 3D view.
+
 ### Colouring the soundings
 
 The **Colour by** menu in the legend switches between the map variables set in `map_variables` (see
@@ -284,6 +316,10 @@ Paths are relative to the JSON file, which stays at the top of the repository. E
 | `default_basemap` | `openstreetmap` | Basemap on a visitor's first visit: `openstreetmap`, `satellite`, `street`, `topographic`, `light`, `dark` or `ocean` (or `carto-voyager` and `carto-positron` with a CARTO key). |
 | `carto_api_key` | empty | CARTO key; when set, the CARTO basemaps are added to the menu. |
 | `start_with_list_collapsed` | `true` | Opens the line list collapsed. |
+| `interpolate_bed` | `true` | Interpolates the bed of each survey day for the 3D view. With `false`, no 3D view is offered. |
+| `bed_grid_spacing` | `0.5` | Grid spacing of the interpolated bed, in metres. |
+| `bed_max_distance` | `4` | The bed is only interpolated within this distance (metres) of a measured sounding. |
+| `bed_max_points` | `250000` | Largest number of interpolated points per survey day. When a survey would need more, the build widens the grid spacing and says so. |
 
 ### `map_variables`
 
@@ -345,8 +381,10 @@ notes under the colour scale for GNSS height and bed elevation.
    lines that cross midnight); removes invalid soundings; and merges the metadata.
 5. Writes, for each line, the map points (`docs/data/points/`), a full-resolution CSV (`docs/data/csv/`), a copy of the
    raw file (`docs/data/raw/`) and its rows in `docs/data/all_lines.csv`.
-6. Writes `docs/data/index.json`, the summary the website reads first: lines, statistics, simplified tracks,
-   metadata, colour scales and download links.
+6. Interpolates the bed of each survey day (date, area and location) and writes it to `docs/data/bed/`: a JSON file
+   for the 3D view and a CSV file for download.
+7. Writes `docs/data/index.json`, the summary the website reads first: lines, survey days with a 3D view,
+   statistics, simplified tracks, metadata, colour scales and download links.
 
 ### What is cleaned
 
@@ -370,13 +408,15 @@ The tests build a small site from the sample files in `tests/files/` into `tests
 
 GitHub recommends keeping a repository under 1 GB, a published Pages site cannot exceed 1 GB, and Git rejects single
 files over 100 MB. Git stores identical files only once, so the raw copies in `docs/data/raw/` add nothing to the size
-of the repository. The CSV and map files in `docs/` do add roughly two to three times the size of the raw data. When the
+of the repository. The CSV and map files in `docs/` do add roughly two to three times the size of the raw data, and each survey day adds
+its interpolated bed (about 1.3 MB for the 2026-10-16 survey at 0.5 m; a coarser `bed_grid_spacing` shrinks it). When the
 archive grows large, set `copy_raw_files` to `false` to shrink the published site. For a much larger archive, keep the
 raw files in GitHub Releases or a DOI archive such as Zenodo and keep this repository for the map.
 
 ## Third-party components
 
-The map uses [Leaflet](https://leafletjs.com) 1.9.4 (BSD-2-Clause) and the fonts Barlow Semi Condensed, Source Sans 3
+The map uses [Leaflet](https://leafletjs.com) 1.9.4 (BSD-2-Clause), the 3D view uses [three.js](https://threejs.org)
+r147 (MIT), and the site uses the fonts Barlow Semi Condensed, Source Sans 3
 and JetBrains Mono (SIL Open Font License). All of them are included in `site/vendor/` with their licences, so the
 website loads nothing from font or script CDNs. Basemap tiles come from OpenStreetMap and Esri, and are credited in the
 corner of the map.
