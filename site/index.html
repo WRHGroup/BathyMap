@@ -57,6 +57,7 @@
         <dt id="licence-label" hidden>Licence</dt><dd id="licence" hidden></dd>
         <dt id="contact-label" hidden>Contact</dt><dd id="contact" hidden></dd>
       </dl>
+      <p><button type="button" id="disclaimer-open" class="text-button">Read the disclaimer</button></p>
       <p id="generated" class="note"></p>
     </details>
     </div>
@@ -120,6 +121,14 @@
     </div>
   </div>
 </main>
+
+<div id="disclaimer" class="disclaimer" hidden>
+  <section class="disclaimer-card" role="dialog" aria-modal="true" aria-labelledby="disclaimer-title">
+    <h2 id="disclaimer-title"></h2>
+    <div id="disclaimer-text" class="disclaimer-text"></div>
+    <button type="button" id="disclaimer-ok" class="button"></button>
+  </section>
+</div>
 
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="app.js"></script>
