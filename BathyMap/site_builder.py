@@ -267,6 +267,25 @@ class BathymetrySiteBuilder(object):
         if self.vertical_exaggeration != 'auto' and not (isinstance(self.vertical_exaggeration, (int, float)) and self.vertical_exaggeration >= 1):
             raise ValueError('vertical_exaggeration must be "auto" or a number of at least 1')
 
+        if loaded_file.get('show_disclaimer') is None:
+            print('show disclaimer set to True (visitors see the disclaimer each time they open the site). If you wish to change this default value, add show_disclaimer to the inputs provided in the JSON file')
+            self.show_disclaimer = True
+        else:
+            self.show_disclaimer = loaded_file.pop('show_disclaimer')
+
+        if loaded_file.get('disclaimer') is None:
+            print('disclaimer set to the default text (no warranty, not for navigation, no liability). If you wish to change this default value, add disclaimer to the inputs provided in the JSON file')
+            self.disclaimer = {'title': 'Before you use these data', 'paragraphs': [
+                'The bathymetry data on this site are raw survey measurements, shared for research and education. They are provided "as is", without warranty of any kind, express or implied, including as to their accuracy, completeness, currency or fitness for any particular purpose.',
+                'The data have not been corrected for changes in water level and may contain errors. The interpolated bed in the 3D view is an estimate, not a measurement.',
+                'The data must not be used for navigation or for any purpose relating to safety on the water.',
+                'We, and the people and institutions involved in collecting and publishing these data, accept no liability for any loss, damage or injury arising from their use or from any errors or omissions in them. You use the data at your own risk and are responsible for deciding whether they suit your purpose.'],
+                'button': 'I understand'}
+        else:
+            self.disclaimer = loaded_file.pop('disclaimer')
+        if not isinstance(self.disclaimer.get('paragraphs', []), list):
+            raise ValueError('the "paragraphs" of the disclaimer must be a list of texts, one per paragraph')
+
         if loaded_file.get('bed_max_points') is None:
             print('bed max points set to 250000 per survey day (the grid spacing is widened when a survey would need more). If you wish to change this default value, add bed_max_points to the inputs provided in the JSON file')
             self.bed_max_points = 250000
@@ -985,6 +1004,8 @@ class BathymetrySiteBuilder(object):
         settings['bed_max_distance'] = self.bed_max_distance
         settings['bed_max_gap'] = self.bed_max_gap
         settings['vertical_exaggeration'] = self.vertical_exaggeration
+        settings['show_disclaimer'] = self.show_disclaimer
+        settings['disclaimer'] = self.disclaimer
         settings['bbox'] = overall_bbox
         settings['combined_csv'] = 'data/all_lines.csv' if self.write_combined_csv and len(line_records) > 0 else None
         settings['generated'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')

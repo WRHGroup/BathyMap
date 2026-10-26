@@ -584,3 +584,20 @@ a { color: inherit; }
 }
 .select3d { display: flex; flex-direction: column; gap: 0.25rem; }
 .select3d .legend-select { margin-bottom: 0; }
+
+/* Disclaimer shown each time the site is opened */
+.disclaimer {
+  position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background: rgba(8, 20, 28, 0.55);
+}
+.disclaimer-card {
+  width: 100%; max-width: 34rem; max-height: 100%; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 0.9rem; padding: 1.25rem 1.35rem 1.2rem;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-top: 3px solid var(--accent); border-radius: 4px; box-shadow: var(--shadow);
+}
+.disclaimer-card h2 { font: 700 1.35rem/1.15 var(--font-display); text-wrap: balance; }
+.disclaimer-text { display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.95rem; line-height: 1.5; }
+.disclaimer-text p { margin: 0; max-width: 65ch; }
+.disclaimer-card .button { align-self: flex-end; min-width: 9rem; justify-content: center; cursor: pointer; }
+.disclaimer-card .button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }

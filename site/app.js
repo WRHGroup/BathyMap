@@ -1668,6 +1668,35 @@
     if (s.repository_url) { el('repo-link').href = s.repository_url; el('repo-link').hidden = false; }
   }
 
+  /* ---------- disclaimer ----------
+     Shown each time the site is opened (unless the configuration sets show_disclaimer to false), and again from
+     "Read the disclaimer" in About this data. It stays until the visitor clicks the button (or presses Esc). */
+  var disclaimerReturn = null;
+  function openDisclaimer() {
+    var d = state.site.disclaimer;
+    if (!d) return;
+    el('disclaimer-title').textContent = d.title || 'Disclaimer';
+    el('disclaimer-text').innerHTML = (d.paragraphs || []).map(function (t) { return '<p>' + escapeHtml(t) + '</p>'; }).join('');
+    el('disclaimer-ok').textContent = d.button || 'I understand';
+    disclaimerReturn = document.activeElement;
+    el('disclaimer').hidden = false;
+    el('disclaimer-ok').focus();
+  }
+  function closeDisclaimer() {
+    el('disclaimer').hidden = true;
+    if (disclaimerReturn && disclaimerReturn.focus) disclaimerReturn.focus();
+  }
+  function bindDisclaimer() {
+    el('disclaimer-ok').addEventListener('click', closeDisclaimer);
+    el('disclaimer-open').addEventListener('click', openDisclaimer);
+    el('disclaimer-open').hidden = !state.site.disclaimer;
+    document.addEventListener('keydown', function (e) {
+      if (el('disclaimer').hidden) return;
+      if (e.key === 'Escape') { e.preventDefault(); closeDisclaimer(); }
+      if (e.key === 'Tab') { e.preventDefault(); el('disclaimer-ok').focus(); }   // keep the focus on the dialog
+    });
+  }
+
   function showError(message) {
     el('site-summary').textContent = 'The survey data could not be loaded';
     el('line-list').innerHTML = '<p class="note">' + escapeHtml(message) + '</p>';
@@ -1692,6 +1721,8 @@
     drawTracks();
     bindPanel();
     bind3d();
+    bindDisclaimer();
+    if (state.site.disclaimer && state.site.show_disclaimer !== false) openDisclaimer();
     setupLocationFilter();
     if (state.site.start_with_list_collapsed !== false) collapseAll();
     renderList();

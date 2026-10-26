@@ -4,6 +4,17 @@
     "organisation": "",
     "contact": "",
     "licence": "",
+    "show_disclaimer": true,
+    "disclaimer": {
+        "title": "Before you use these data",
+        "paragraphs": [
+            "The bathymetry data on this site are raw survey measurements, shared for research and education. They are provided \"as is\", without warranty of any kind, express or implied, including as to their accuracy, completeness, currency or fitness for any particular purpose.",
+            "The data have not been corrected for changes in water level and may contain errors. The interpolated bed in the 3D view is an estimate, not a measurement.",
+            "The data must not be used for navigation or for any purpose relating to safety on the water.",
+            "We, and the people and institutions involved in collecting and publishing these data, accept no liability for any loss, damage or injury arising from their use or from any errors or omissions in them. You use the data at your own risk and are responsible for deciding whether they suit your purpose."
+        ],
+        "button": "I understand"
+    },
     "repository_url": "",
     "repository_branch": "main",
     "data_directory": "data",

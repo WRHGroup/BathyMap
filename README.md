@@ -175,6 +175,16 @@ block the data files from loading that way.
 
 ## Using the map
 
+### Disclaimer
+
+Each time someone opens the site, a disclaimer appears over it and stays until they click **I understand** (or press
+Esc). It says the data are provided as they are, without warranty, may contain errors and must not be used for
+navigation, and that no liability is accepted for their use. **Read the disclaimer** in "About this data" shows it
+again. Its title, paragraphs and button text are set by `disclaimer` in `1_site_config.json`, so they can be changed
+without touching the code; `show_disclaimer: false` stops it from appearing on opening. The wording follows the
+disclaimers of other bathymetry and open-data publishers (GEBCO, USGS, Ontario Open Data), but it is not legal advice;
+have it checked by your institution if needed.
+
 ### Basemaps
 
 The layers button at the top right of the map chooses the basemap and the overlays. None of them needs an account or
@@ -328,6 +338,8 @@ Paths are relative to the JSON file, which stays at the top of the repository. E
 | `output_directory` | `docs` | Where the website is written; must match the Pages folder. It is emptied on each build, and the build refuses to empty a folder that a previous build did not create (it looks for the `.bathymap-build` file it leaves there). |
 | `site_title`, `site_description` | `BathyMap`, empty | The title is shown in the header and the browser tab, the description in "About this data". |
 | `organisation`, `contact`, `licence` | empty | Shown in "About this data" when set. |
+| `show_disclaimer` | `true` | Shows the disclaimer each time the site is opened. |
+| `disclaimer` | no warranty, not for navigation, no liability | The disclaimer: `title`, `paragraphs` (a list, one text per paragraph) and `button`. |
 | `repository_url` | empty | GitHub address of the repository. Adds a "Data repository" link, and is needed when `copy_raw_files` is `false`. |
 | `repository_branch` | `main` | Branch used for the raw-file links when `copy_raw_files` is `false`. |
 | `file_extensions` | `[".dep"]` | File types read from the data folder. |
