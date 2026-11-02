@@ -553,7 +553,7 @@ a { color: inherit; }
 .toggle3d input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); }
 .toggle3d > span:nth-child(2) { display: inline-flex; align-items: center; gap: 0.4rem; }
 .toggle3d .data { font-size: 0.72rem; color: var(--muted); }
-.swatch3d { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: #7fcdbb; flex: none; }
+.swatch3d { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: #36c66b; flex: none; }
 .swatch3d.ping { box-shadow: 0 0 0 2px var(--ink) inset; }
 .slider3d { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.5rem; align-items: center; }
 .slider3d input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--accent); }
@@ -601,3 +601,9 @@ a { color: inherit; }
 .disclaimer-text p { margin: 0; max-width: 65ch; }
 .disclaimer-card .button { align-self: flex-end; min-width: 9rem; justify-content: center; cursor: pointer; }
 .disclaimer-card .button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.swatch3d.surface { border-radius: 2px; background: linear-gradient(135deg, #e3241f, #f6c923, #36c66b, #2a8fd6, #6d1f9e); }
+.surface-note { margin: -0.2rem 0 0; padding: 0.4rem 0.55rem; font-size: 0.75rem; line-height: 1.35; color: var(--ink); background: var(--accent-soft); border-radius: 3px; }
+.legend-cats { list-style: none; margin: 0.1rem 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem 0.6rem; font-size: 0.8rem; }
+.legend-cats li { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+.legend-cats .data { color: var(--muted); font-size: 0.72rem; }
+.cat-swatch { width: 0.8rem; height: 0.8rem; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px rgba(15, 37, 51, 0.35); }

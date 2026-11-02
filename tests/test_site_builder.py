@@ -186,8 +186,7 @@ def test_survey_beds():
     """
     The sample lines are short single passes, so by default (bed_max_distance 0) they get no bed at all. With a strip of
     bed_max_distance around the soundings, checks that the bed of each survey day is interpolated and written as the
-    JSON file of the 3D view and as a CSV file with latitude, longitude, interpolated depth and distance to the nearest
-    sounding.
+    JSON file of the 3D view, and that no download of it is written.
     """
     SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
     SiteModel.setup()
@@ -231,9 +230,9 @@ def test_survey_beds():
         # linear interpolation never goes beyond the measured depths
         assert(min(bed['grid']['z']) >= soundings['Depth'].min() - 0.001)
         assert(max(bed['grid']['z']) <= soundings['Depth'].max() + 0.001)
-        bed_csv = pd.read_csv(os.path.join(SiteModel.output_directory, bed_record['files']['csv']))
-        assert(list(bed_csv.columns) == ['Latitude', 'Longitude', 'Interpolated depth', 'Distance to nearest sounding'])
-        assert(len(bed_csv) == bed_record['points'])
+        # the interpolated bed is for viewing only: no download is written or offered
+        assert('csv' not in bed_record['files'])
+        assert(not os.path.isfile(os.path.join(SiteModel.output_directory, 'data', 'bed', bed_record['id'] + '.csv')))
 
 
 def test_bed_fills_between_passes():
@@ -274,3 +273,19 @@ def test_bed_fills_between_passes():
     assert(north.min() >= -1e-6 and east.min() >= -1e-6 and east.max() <= 199 + 1e-6)
     # linear interpolation stays within the measured depths
     assert(bed['z'].min() >= soundings['Depth'].min() - 1e-9 and bed['z'].max() <= soundings['Depth'].max() + 1e-9)
+
+
+def test_categorical_map_variable():
+    """
+    Checks that the GPS state, a code rather than a quantity, is offered with one colour per value: the menu entry
+    keeps its categories and lists the values found in the data, and is left out when every sounding has the same state.
+    """
+    SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
+    SiteModel.setup()
+    variables = SiteModel.site_map_variables(all_values={'Depth': [1.0, 2.0, 3.0], 'GPS State': [4, 4, 5, 2, 4]})
+    gps = [variable for variable in variables if variable['column'] == 'GPS State'][0]
+    assert(gps['colours'] == 'categories')
+    assert(gps['values'] == ['2', '4', '5'])
+    assert(gps['categories']['4']['label'] == 'RTK fixed')
+    variables = SiteModel.site_map_variables(all_values={'Depth': [1.0, 2.0, 3.0], 'GPS State': [4, 4, 4]})
+    assert('GPS State' not in [variable['column'] for variable in variables])

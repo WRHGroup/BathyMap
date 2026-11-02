@@ -84,15 +84,15 @@
           <div class="legend-head"><span class="legend-title">Water depth</span><span class="legend-unit">(m)</span></div>
           <canvas id="ramp3d" width="240" height="12"></canvas>
           <div id="ticks3d" class="legend-ticks"></div>
-          <label class="toggle3d"><input type="checkbox" id="show-bed" checked><span><span class="swatch3d"></span>Interpolated bed</span><span id="n-bed" class="data"></span></label>
+          <label class="toggle3d"><input type="checkbox" id="show-bed" checked><span><span class="swatch3d surface"></span>Interpolated surface</span><span id="n-bed" class="data"></span></label>
+          <p id="surface-note" class="surface-note"></p>
           <label class="toggle3d"><input type="checkbox" id="show-pings" checked><span><span class="swatch3d ping"></span>Measured soundings</span><span id="n-pings" class="data"></span></label>
           <div class="select3d"><label for="base3d">Basemap at the water surface</label><select id="base3d" class="legend-select"><option value="">None (plain background)</option></select></div>
           <p id="basemap-note" class="caveat3d" hidden></p>
           <label class="toggle3d"><input type="checkbox" id="show-water"><span>Water surface</span><span></span></label>
           <label class="toggle3d"><input type="checkbox" id="fade3d" checked><span>Fade estimates far from soundings</span><span></span></label>
           <div class="slider3d"><label for="exag3d">Vertical exaggeration</label><output id="exag3d-out" for="exag3d">10×</output><input type="range" id="exag3d" min="1" max="60" step="1" value="10"></div>
-          <div class="slider3d"><label for="size3d">Point size</label><output id="size3d-out" for="size3d">1.0</output><input type="range" id="size3d" min="0.4" max="2.5" step="0.1" value="1"></div>
-          <a id="bed-csv" class="button ghost" href="#" download>Interpolated bed (CSV)</a>
+          <div class="slider3d"><label for="size3d">Sounding size</label><output id="size3d-out" for="size3d">1.0</output><input type="range" id="size3d" min="0.4" max="2.5" step="0.1" value="1"></div>
           <p id="caveat3d" class="caveat3d"></p>
         </div>
       </details>
@@ -110,7 +110,8 @@
       <canvas id="legend-ramp" width="240" height="12"></canvas>
       <div id="legend-ticks" class="legend-ticks"></div>
       <div id="legend-note" class="legend-note" hidden></div>
-      <div class="scale-row">
+      <ul id="legend-cats" class="legend-cats" hidden></ul>
+      <div class="scale-row" id="scale-row">
         <div id="scale-mode" class="scale-mode" role="group" aria-label="Colour scale range">
           <button type="button" data-mode="view" aria-pressed="true">This view</button>
           <button type="button" data-mode="all" aria-pressed="false">All data</button>
