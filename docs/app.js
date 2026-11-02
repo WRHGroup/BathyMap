@@ -25,7 +25,8 @@
   ];
   function baseKey(k) { return k || 'openstreetmap'; }
   function isDarkBase() { return BASEMAPS.some(function (b) { return b.name === state.base && b.dark; }); }
-  var RAMP = ['#ffffd9', '#edf8b1', '#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0', '#225ea8', '#253494', '#081d58'];
+  // depth colours, shallow to deep: red, orange, yellow, green, cyan, blue, purple (the usual bathymetry rainbow)
+  var RAMP = ['#e3241f', '#f5761b', '#f6c923', '#e8ef2a', '#8fd640', '#36c66b', '#22b7b9', '#2a8fd6', '#3456c8', '#4b2fb0', '#6d1f9e'];
   var GPS_LABELS = { '0': 'Invalid', '1': 'GPS', '2': 'DGPS', '3': 'PPS', '4': 'RTK fixed', '5': 'RTK float', '6': 'Estimated' };
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -96,13 +97,15 @@
   function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
   /* ---------- colour scale ---------- */
-  /* Each map variable has a colour scale. Depth runs from pale (shallow) to dark blue (deep); elevation is the same
-     ramp reversed, so a low bed is dark as it is on the depth map; any other variable uses a separate ramp so it is
-     never mistaken for depth. Values outside the range take the end colours; a missing value is grey. */
+  /* Each map variable has a colour scale. Depth runs from red (shallow) through yellow, green and blue to purple
+     (deep); elevation is the same ramp reversed, so a low bed is purple as it is on the depth map; any other measured
+     quantity runs from light grey to charcoal, which the rainbow never uses, so it is never mistaken for depth.
+     Discrete codes such as the GPS state ("categories") get one colour per value instead of a scale. Values outside the
+     range take the end colours; a missing value is grey. */
   var RAMPS = {
     depth: RAMP,
     elevation: RAMP.slice().reverse(),
-    sequential: ['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725'],
+    sequential: ['#eef1f4', '#26323d'],
     // Blue below zero, white at zero, red above: for signed values such as roll and pitch.
     diverging: ['#2166ac', '#4393c3', '#92c5de', '#d1e5f0', '#f7f7f7', '#fddbc7', '#f4a582', '#d6604d', '#b2182b']
   };
@@ -120,6 +123,12 @@
     var f = x - i;
     var a = rgb[i], b = rgb[i + 1];
     return 'rgb(' + Math.round(a[0] + (b[0] - a[0]) * f) + ',' + Math.round(a[1] + (b[1] - a[1]) * f) + ',' + Math.round(a[2] + (b[2] - a[2]) * f) + ')';
+  }
+  function pointColour(v, range, variable) {
+    if (variable.colours !== 'categories') return rampColour(v, range, variable.colours);
+    if (v == null || isNaN(v)) return MISSING_COLOUR;
+    var category = (variable.categories || {})[String(Math.round(v))];
+    return category ? category.colour : MISSING_COLOUR;
   }
   function depthColour(d) { return rampColour(d, state.site.depth_colour_range, 'depth'); }
 
@@ -148,12 +157,33 @@
   }
   function fmtValue(v, variable) {
     if (v == null || isNaN(v)) return 'no value';
+    if (variable.colours === 'categories') {
+      var category = (variable.categories || {})[String(Math.round(v))];
+      return (category ? category.label : 'Other') + ' (' + Math.round(v) + ')';
+    }
     if (variable.format === 'time') return fmtClock(v, true);
     return Number(v).toFixed(variable.decimals) + (variable.unit ? (variable.unit === '°' ? '' : ' ') + variable.unit : '');
   }
 
   function drawLegend() {
     var variable = currentVariable(), ramp = RAMPS[variable.colours] || RAMPS.sequential;
+    var categorical = variable.colours === 'categories';
+    // discrete codes: a swatch and label for each value in the data, instead of the colour scale
+    el('legend-ramp').hidden = categorical;
+    el('legend-ticks').hidden = categorical;
+    el('scale-row').hidden = categorical;
+    el('legend-cats').hidden = !categorical;
+    if (categorical) {
+      el('legend-cats').innerHTML = (variable.values || Object.keys(variable.categories || {})).map(function (value) {
+        var category = (variable.categories || {})[value] || { label: 'Other', colour: MISSING_COLOUR };
+        return '<li><span class="cat-swatch" style="background:' + escapeHtml(category.colour) + '"></span>' + escapeHtml(category.label) +
+          ' <span class="data">' + escapeHtml(value) + '</span></li>';
+      }).join('');
+      el('legend-unit').textContent = '';
+      el('legend-note').hidden = !variable.note;
+      el('legend-note').textContent = variable.note || '';
+      return;
+    }
     var c = el('legend-ramp'), ctx = c.getContext('2d');
     var g = ctx.createLinearGradient(0, 0, c.width, 0);
     ramp.forEach(function (col, i) { g.addColorStop(i / (ramp.length - 1), col); });
@@ -347,7 +377,7 @@
     for (var i = 0; i < p.lat.length; i++) {
       group.markers.push(L.circleMarker([p.lat[i], p.lon[i]], {
         renderer: renderer, radius: r, stroke: true, weight: 0.7, color: outline,
-        fillColor: rampColour(valueAt(p, i, variable), range, variable.colours), fillOpacity: 0.95, interactive: false
+        fillColor: pointColour(valueAt(p, i, variable), range, variable), fillOpacity: 0.95, interactive: false
       }).addTo(group));
     }
     group.radius = r;
@@ -358,7 +388,7 @@
     var variable = currentVariable(), range = colourRange();
     Object.keys(state.pointLayers).forEach(function (id) {
       var p = state.points[id], markers = state.pointLayers[id].markers;
-      for (var i = 0; i < markers.length; i++) markers[i].setStyle({ fillColor: rampColour(valueAt(p, i, variable), range, variable.colours) });
+      for (var i = 0; i < markers.length; i++) markers[i].setStyle({ fillColor: pointColour(valueAt(p, i, variable), range, variable) });
     });
   }
 
@@ -376,7 +406,7 @@
   }
   function updateViewRange() {
     var previous = state.viewRange, next = null;
-    if (state.scaleMode === 'view') {
+    if (state.scaleMode === 'view' && currentVariable().colours !== 'categories') {
       var variable = currentVariable(), bounds = map.getBounds(), values = [];
       Object.keys(state.pointLayers).forEach(function (id) {
         var p = state.points[id];
@@ -1198,6 +1228,11 @@
     view3d.controls.dampingFactor = 0.12;
     view3d.controls.maxPolarAngle = Math.PI * 0.495;
     view3d.waterMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide });
+    // soft light from all sides plus a sun from the north-west, as in a hillshade, so the shape of the surface shows
+    view3d.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a9aa6, 0.62));
+    var sun = new THREE.DirectionalLight(0xffffff, 0.55);
+    sun.position.set(-1, 1.2, -1);
+    view3d.scene.add(sun);
     view3d.ray = new THREE.Raycaster();
     stage.addEventListener('pointermove', function (e) { view3d.pending = e; });
     stage.addEventListener('pointerleave', function () { view3d.pending = null; el('probe3d').hidden = true; });
@@ -1219,6 +1254,38 @@
   }
   function bedRange() { return state.scaleMode === 'all' ? state.site.depth_colour_range : view3d.data.range; }
   // x east, y up (depth goes down), z south: three's z axis points towards the viewer.
+  /* The interpolated bed is drawn as a continuous surface: the build's regular grid, joined into triangles wherever
+     neighbouring grid points exist, coloured by depth and lit from the north-west like a hillshade. */
+  function makeSurface(set, spacing) {
+    var n = set.x.length, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), at = {}, i;
+    for (i = 0; i < n; i++) {
+      pos[3 * i] = set.x[i]; pos[3 * i + 2] = -set.y[i];
+      at[Math.round(set.x[i] / spacing) + ',' + Math.round(set.y[i] / spacing)] = i;
+    }
+    // every grid cell touched by a grid point: two triangles when all four corners exist, one when three do
+    var index = [], seen = {};
+    for (i = 0; i < n; i++) {
+      var px = Math.round(set.x[i] / spacing), py = Math.round(set.y[i] / spacing);
+      for (var ox = -1; ox <= 0; ox++) for (var oy = -1; oy <= 0; oy++) {
+        var cx = px + ox, cy = py + oy, cell = cx + ',' + cy;
+        if (seen[cell]) continue;
+        seen[cell] = true;
+        var a = at[cx + ',' + cy], b = at[(cx + 1) + ',' + cy], c = at[cx + ',' + (cy + 1)], d = at[(cx + 1) + ',' + (cy + 1)];
+        var corners = [a, b, d, c].filter(function (v) { return v !== undefined; });   // counter-clockwise around the cell
+        if (corners.length === 4) index.push(a, b, d, a, d, c);
+        else if (corners.length === 3) index.push(corners[0], corners[1], corners[2]);
+      }
+    }
+    var g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setIndex(index);
+    var m = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+    var mesh = new THREE.Mesh(g, m);
+    mesh.userData = { set: set, triangles: index.length / 3 };
+    view3d.scene.add(mesh);
+    return mesh;
+  }
   function makePoints(set, size, rim) {
     var n = set.x.length, pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
     for (var i = 0; i < n; i++) { pos[3 * i] = set.x[i]; pos[3 * i + 2] = -set.y[i]; }
@@ -1231,13 +1298,13 @@
     view3d.scene.add(p);
     return p;
   }
-  /* Interpolated points fade towards the background with distance from the nearest measured sounding, reaching 75% at
+  /* The interpolated surface fades towards the background with distance from the nearest measured sounding, reaching 50% at
      a third of the largest gap filled (beyond half of bed_max_distance when that is set), so the parts of the bed that
      rest on few measurements are visibly less certain. */
   function fadeOf(d) {
     var data = view3d.data, near = (data.max_distance || 0) / 2, far = Math.max(near + 1, (data.max_gap || 30) / 3);
     if (!el('fade3d').checked || d == null) return 0;
-    return 0.75 * Math.max(0, Math.min(1, (d - near) / (far - near)));
+    return 0.5 * Math.max(0, Math.min(1, (d - near) / (far - near)));
   }
   function colour3d() {
     var range = bedRange(), stage = hexToRgb(rgbHex(cssVar('--stage')));
@@ -1269,6 +1336,7 @@
       var a = p.geometry.attributes.position, z = p.userData.set.z;
       for (var i = 0; i < z.length; i++) a.array[3 * i + 1] = -z[i] * view3d.exag;
       a.needsUpdate = true;
+      if (p.isMesh) p.geometry.computeVertexNormals();
       p.geometry.computeBoundingSphere();
     });
     var e = d.extent, cx = (e[0] + e[1]) / 2, cz = -(e[2] + e[3]) / 2, span = Math.max(e[1] - e[0], e[3] - e[2]);
@@ -1311,17 +1379,26 @@
     view3d.ray.params.Points.threshold = Math.max(0.3, view3d.data.spacing);
     view3d.ray.setFromCamera(mouse, view3d.camera);
     var targets = [view3d.pings, view3d.bed].filter(function (p) { return p.visible; });
-    var hits = view3d.ray.intersectObjects(targets, false), hit = null;
+    var hits = view3d.ray.intersectObjects(targets, false), hit = null, surface = null;
+    // the nearest surface hit, and a sounding under the pointer in front of it (or just behind, as soundings sit on it)
+    hits.forEach(function (h) { if (h.object === view3d.bed && !surface) surface = h; });
     for (var k = 0; k < hits.length; k++) {
-      if (hits[k].distance > hits[0].distance + 4) break;
-      if (!hit || hits[k].distanceToRay < hit.distanceToRay - 0.05) hit = hits[k];
+      var h = hits[k];
+      if (h.object !== view3d.pings || (surface && h.distance > surface.distance + 1)) continue;
+      if (!hit || h.distanceToRay < hit.distanceToRay - 0.05) hit = h;
     }
+    if (!hit) hit = surface;
     if (!hit) { box.hidden = true; return; }
-    var set = hit.object.userData.set, i = hit.index, measured = hit.object === view3d.pings;
-    box.innerHTML = '<span class="kind' + (measured ? ' measured' : '') + '">' +
-      (measured ? 'Measured sounding · ' + escapeHtml(view3d.data.lines[set.line[i]] || '') : 'Interpolated estimate') + '</span>' +
-      '<strong>' + set.z[i].toFixed(measured ? 3 : 2) + ' m</strong>' +
-      (!measured && set.d ? '<span class="data">' + set.d[i].toFixed(1) + ' m from the nearest sounding</span>' : '');
+    var set = hit.object.userData.set, measured = hit.object === view3d.pings;
+    if (measured) {
+      box.innerHTML = '<span class="kind measured">Measured sounding · ' + escapeHtml(view3d.data.lines[set.line[hit.index]] || '') + '</span>' +
+        '<strong>' + set.z[hit.index].toFixed(3) + ' m</strong>';
+    } else {
+      var f = hit.face, near = set.d ? (set.d[f.a] + set.d[f.b] + set.d[f.c]) / 3 : null;
+      box.innerHTML = '<span class="kind">Interpolated surface · for viewing only</span>' +
+        '<strong>about ' + (-hit.point.y / view3d.exag).toFixed(2) + ' m</strong>' +
+        (near != null ? '<span class="data">about ' + near.toFixed(1) + ' m from the nearest sounding</span>' : '');
+    }
     box.hidden = false;
     var x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
     if (x + box.offsetWidth > r.width - 8) x -= box.offsetWidth + 28;
@@ -1552,13 +1629,13 @@
     } else {
       el('bed-title').textContent = (parts[2] ? parts[2] + ' · ' : '') + fmtDate(parts[0]);
     }
-    el('bed-csv').href = record.files.csv;
-    el('bed-csv').setAttribute('download', record.id + '_interpolated-bed.csv');
-    el('n-bed').textContent = fmtNum(record.points);
-    el('caveat3d').textContent = 'The bed is interpolated linearly on a ' + record.spacing + ' m grid between neighbouring passes up to ' +
+    el('n-bed').textContent = fmtNum(Math.round(record.points * record.spacing * record.spacing)) + ' m²';
+    el('surface-note').textContent = 'The coloured surface is interpolated between the measured soundings for viewing only. It is not measured, and ' +
+      'it is not available for download. Only the measured soundings are data.';
+    el('caveat3d').textContent = 'The surface is interpolated linearly on a ' + record.spacing + ' m grid between neighbouring passes up to ' +
       state.site.bed_max_gap + ' m apart' + (state.site.bed_max_distance > 0 ? ', and within ' + state.site.bed_max_distance + ' m of every sounding' : '') +
       '. It is not extended beyond the outermost passes' + (state.site.bed_max_distance > 0 ? '' : ' or beside a lone pass') +
-      '. Those values are estimates and fade with distance from the nearest sounding; only the measured soundings are data.' +
+      ', and fades with distance from the nearest sounding.' +
       (record.kind === 'location' && dates.length > 1 ? ' This bed combines the survey days from ' + fmtDate(dates[0]) + ' to ' + fmtDate(dates[dates.length - 1]) +
         '; the bed may have changed between them.' : '');
     if (window.matchMedia('(max-width: 760px)').matches) el('controls3d').open = false;
@@ -1571,7 +1648,7 @@
       var d = res[1];
       [view3d.bed, view3d.pings, view3d.basemap].forEach(function (p) {
         if (!p) return;
-        view3d.scene.remove(p); p.geometry.dispose(); p.material.map.dispose(); p.material.dispose();
+        view3d.scene.remove(p); p.geometry.dispose(); if (p.material.map) p.material.map.dispose(); p.material.dispose();
       });
       view3d.basemap = null;
       el('attr3d').hidden = true;
@@ -1586,7 +1663,7 @@
       view3d.exag = fixed > 0 ? Math.min(60, Math.round(fixed)) : Math.max(1, Math.min(30, Math.round(0.1 * width / Math.max(deepest, 0.1))));
       el('exag3d').value = view3d.exag;
       el('exag3d-out').textContent = view3d.exag + '×';
-      view3d.bed = makePoints(d.grid, d.spacing * 1.7, false);
+      view3d.bed = makeSurface(d.grid, d.spacing);
       view3d.pings = makePoints(d.soundings, Math.max(0.6, d.spacing * 2.2), true);
       view3d.bed.visible = el('show-bed').checked;
       view3d.pings.visible = el('show-pings').checked;
@@ -1629,7 +1706,7 @@
     });
     el('size3d').addEventListener('input', function (e) {
       view3d.size = +e.target.value; el('size3d-out').textContent = view3d.size.toFixed(1);
-      [view3d.bed, view3d.pings].forEach(function (p) { if (p) p.material.size = p.userData.base * view3d.size; });
+      if (view3d.pings) view3d.pings.material.size = view3d.pings.userData.base * view3d.size;
     });
     [].forEach.call(document.querySelectorAll('.views3d button'), function (b) {
       b.addEventListener('click', function () { if (view3d.data) camera3d(b.getAttribute('data-view')); });

@@ -187,7 +187,7 @@ class BathymetrySiteBuilder(object):
                 {'column': 'Diff Delay', 'label': 'Correction age', 'note': 'Age of the RTK corrections', 'unit': 's', 'colours': 'sequential', 'decimals': 1, 'group': 'Quality'},
                 {'column': 'HRMS', 'label': 'Horizontal precision', 'unit': 'm', 'colours': 'sequential', 'decimals': 3, 'group': 'Quality'},
                 {'column': 'VRMS', 'label': 'Vertical precision', 'unit': 'm', 'colours': 'sequential', 'decimals': 3, 'group': 'Quality'},
-                {'column': 'GPS State', 'label': 'GPS state', 'note': '1 GPS, 2 DGPS, 4 RTK fixed, 5 RTK float', 'unit': '', 'colours': 'sequential', 'decimals': 0, 'group': 'Quality'}
+                {'column': 'GPS State', 'label': 'GPS state', 'unit': '', 'colours': 'categories', 'categories': {'4': {'label': 'RTK fixed', 'colour': '#1a9850'}, '5': {'label': 'RTK float', 'colour': '#fdd835'}, '2': {'label': 'DGPS', 'colour': '#fb8c00'}, '1': {'label': 'GPS (single)', 'colour': '#d32f2f'}, '3': {'label': 'PPS', 'colour': '#8e24aa'}, '6': {'label': 'Estimated', 'colour': '#6d4c41'}, '0': {'label': 'Invalid', 'colour': '#212121'}}, 'decimals': 0, 'group': 'Quality'}
             ]
         else:
             self.map_variables = loaded_file.pop('map_variables')
@@ -197,8 +197,10 @@ class BathymetrySiteBuilder(object):
         for map_variable in self.map_variables:
             if map_variable.get('column') is None:
                 raise ValueError('each entry of map_variables needs a "column" key, for example {"column": "Speed"}')
-            if map_variable.get('colours', 'sequential') not in ['depth', 'elevation', 'sequential', 'diverging']:
-                raise ValueError('the colours of the map variable "{}" must be "depth", "elevation", "sequential" or "diverging"'.format(map_variable['column']))
+            if map_variable.get('colours', 'sequential') not in ['depth', 'elevation', 'sequential', 'diverging', 'categories']:
+                raise ValueError('the colours of the map variable "{}" must be "depth", "elevation", "sequential", "diverging" or "categories"'.format(map_variable['column']))
+            if map_variable.get('colours') == 'categories' and not isinstance(map_variable.get('categories'), dict):
+                raise ValueError('the map variable "{}" has colours "categories", so it needs "categories": {{"value": {{"label": ..., "colour": ...}}}}'.format(map_variable['column']))
 
         if loaded_file.get('height_reference') is None:
             print('height reference set to "as logged by the instrument". If you wish to change this default value, add height_reference to the inputs provided in the JSON file')
@@ -277,7 +279,7 @@ class BathymetrySiteBuilder(object):
             print('disclaimer set to the default text (no warranty, not for navigation, no liability). If you wish to change this default value, add disclaimer to the inputs provided in the JSON file')
             self.disclaimer = {'title': 'Before you use these data', 'paragraphs': [
                 'The bathymetry data on this site are raw survey measurements, shared for research and education. They are provided "as is", without warranty of any kind, express or implied, including as to their accuracy, completeness, currency or fitness for any particular purpose.',
-                'The data have not been corrected for changes in water level and may contain errors. The interpolated bed in the 3D view is an estimate, not a measurement.',
+                'The data have not been corrected for changes in water level and may contain errors. The coloured surface in the 3D view is interpolated between the soundings for viewing only; it is not measured.',
                 'The data must not be used for navigation or for any purpose relating to safety on the water.',
                 'We, and the people and institutions involved in collecting and publishing these data, accept no liability for any loss, damage or injury arising from their use or from any errors or omissions in them. You use the data at your own risk and are responsible for deciding whether they suit your purpose.'],
                 'button': 'I understand'}
@@ -852,8 +854,8 @@ class BathymetrySiteBuilder(object):
         """
         Writes, for each survey day and each named location (all its survey days together), the interpolated bed and
         the soundings drawn with it in the 3D view (data/bed/<survey>.json, coordinates in metres from the centre of
-        the survey), and the interpolated bed as a CSV file with latitude, longitude and interpolated depth
-        (data/bed/<survey>.csv). Returns the list of beds written, for the index.
+        the survey). The interpolated bed is only drawn, as a surface for viewing; it is not offered for download, as it
+        is not measured. Returns the list of beds written, for the index.
         """
         beds = []
         day_keys = [key for key in survey_soundings if survey_soundings[key][0]['kind'] == 'day']
@@ -903,10 +905,6 @@ class BathymetrySiteBuilder(object):
                                  'triangles': [int(index) for index in bed['outline']['triangles']]}
             with open(os.path.join(self.output_directory, 'data', 'bed', survey_id + '.json'), 'w') as f:
                 json.dump(points, f, separators=(',', ':'))
-            longitude, latitude = bed['backward'].transform(bed['x'] + x0, bed['y'] + y0)
-            bed_csv = pd.DataFrame({'Latitude': np.round(latitude, 9), 'Longitude': np.round(longitude, 9), 'Interpolated depth': np.round(bed['z'], 3),
-                                    'Distance to nearest sounding': np.round(bed['distance'], 2)})
-            bed_csv.to_csv(os.path.join(self.output_directory, 'data', 'bed', survey_id + '.csv'), index=False)
             record = {}
             record['key'] = key
             record['id'] = survey_id
@@ -916,7 +914,7 @@ class BathymetrySiteBuilder(object):
             record['points'] = int(len(bed['z']))
             record['soundings'] = int(len(soundings))
             record['spacing'] = points['spacing']
-            record['files'] = {'points': 'data/bed/' + survey_id + '.json', 'csv': 'data/bed/' + survey_id + '.csv'}
+            record['files'] = {'points': 'data/bed/' + survey_id + '.json'}
             beds.append(record)
             print('bed points:', len(bed['z']), '| grid spacing:', round(bed['spacing'], 2), 'm | UTM EPSG:', bed['epsg'])
         return beds
@@ -958,6 +956,10 @@ class BathymetrySiteBuilder(object):
             site_variable['note'] = map_variable.get('note', '')
             site_variable['group'] = map_variable.get('group', '')
             site_variable['format'] = map_variable.get('format', '')
+            if site_variable['colours'] == 'categories':
+                # discrete codes: each value has its own colour and label; the legend lists the values in the data
+                site_variable['categories'] = map_variable['categories']
+                site_variable['values'] = [str(int(value)) if float(value).is_integer() else str(value) for value in np.unique(values)]
             site_variable['range'] = colour_range
             site_variables.append(site_variable)
         return site_variables

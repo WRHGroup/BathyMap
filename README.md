@@ -21,8 +21,8 @@ an update means committing and pushing. There is no GitHub Actions workflow and 
   or by text, and has checkboxes that show or hide lines on the map one at a time or all at once.
 - Open a line to see its statistics, platform, sensor and other metadata, and download it as the original `.dep`
   file or as a CSV with decimal-degree coordinates.
-- Open any survey day in 3D: the measured soundings with an interpolated bed between them, to rotate and zoom, with an
-  adjustable vertical exaggeration, and the interpolated bed as a CSV download.
+- Open any survey day or location in 3D: the measured soundings over a shaded, coloured surface interpolated between
+  them for viewing only, to rotate and zoom, with an adjustable vertical exaggeration.
 - Draw a box or a polygon on the map and download every sounding inside it as a CSV.
 - Download every line in one CSV, and share a link straight to a line (the address ends with `#<line id>`).
 - Return to the full view with the **Zoom to all data** button under the zoom buttons.
@@ -238,11 +238,13 @@ that is smaller than the survey. With no survey in view, a note says so. **Map**
 **Zoom to all data** return to the map. Unchecking lines that the open 3D view is built from also returns to the map, zoomed to that area, with those
 lines hidden.
 
-The view shows two point clouds, coloured by water depth:
+The view shows two layers, coloured by water depth:
 
 - **Measured soundings** (points with a dark rim): the soundings of the survey day, thinned like the map
   (`max_map_points_per_line`).
-- **Interpolated bed** (plain points): the bed estimated between the soundings. The build triangulates the soundings of
+- **Interpolated surface**: a continuous surface, shaded as if lit from the north-west, showing the bed estimated
+  between the soundings. It is interpolated for viewing only: it is not measured, and it is not offered for download.
+  The build triangulates the soundings of
   the survey day (or location) and interpolates the depth linearly onto a regular grid (`bed_grid_spacing`, 0.5 m by
   default), in metres in the local UTM zone. A triangle of the triangulation is filled when it joins two different
   passes of the survey and none of its sides is longer than `bed_max_gap` (30 m by default). The bed is therefore
@@ -269,18 +271,16 @@ Survey areas are much wider than they are deep, so the depths are exaggerated. T
 at which the deepest point lies a tenth of the survey's width below the water surface (for example 9× for the
 Credit River survey, about 160 m across and 1.8 m deep), between 1× and 30×, or with the number set in
 `vertical_exaggeration`; the slider changes it between 1× and 60×. The panel at the bottom right sets
-the vertical exaggeration, the point size, which
-clouds are shown, and a transparent water surface. **Oblique**, **From above** and **From the side** reset the camera.
-Hovering over a point says whether it is a measured sounding (with its line) or an interpolated estimate, and gives its
-depth and, for an estimate, its distance from the nearest sounding. With **Fade estimates far from soundings** (on by
-default), interpolated points fade towards the background with distance from the nearest sounding, reaching their
+the vertical exaggeration, the size of the sounding points, which layers are shown, and a transparent water surface. **Oblique**, **From above** and **From the side** reset the camera.
+Hovering over a sounding gives its line and depth; hovering over the surface says it is interpolated for viewing only,
+with its approximate depth and how far it is from the nearest sounding. With **Fade estimates far from soundings** (on
+by default), the surface fades towards the background with distance from the nearest sounding, reaching their
 faintest at a third of `bed_max_gap`, so the parts of the bed that rest on few measurements look less certain. The colour scale follows the **This view** / **All data** choice of the map: this survey day's depths, or the
 scale shared by all surveys.
 
-**Interpolated bed (CSV)** downloads the grid as `Latitude`, `Longitude`, `Interpolated depth` and `Distance to
-nearest sounding` (metres). The interpolated values
-are estimates, not measurements: a single-beam survey measures one depth per sounding, and the bed between survey
-lines is only as good as the line spacing allows. The 3D view and the CSV say so. Each survey day is interpolated on its
+The surface is an estimate, not a measurement: a single-beam survey measures one depth per sounding, and the bed
+between survey lines is only as good as the line spacing allows. The 3D view says so next to the surface, and the
+surface cannot be downloaded; the downloads hold the measured soundings only. Each survey day is interpolated on its
 own, so surveys of the same place on different dates are never blended. The 3D library is only downloaded when a
 visitor opens a 3D view.
 
@@ -301,7 +301,7 @@ The **Colour by** menu in the legend switches between the map variables set in `
 | Quality | Roll, Pitch | `Roll`, `Pitch` | Tilt of the platform, converted from radians to degrees. A tilted single-beam transducer measures off vertical. Blue is negative, red positive, white zero. |
 | | Correction age | `Diff Delay` | Age of the RTK corrections in seconds; older corrections mean less accurate positions. |
 | | Horizontal and vertical precision | `HRMS`, `VRMS` | Shown once a survey records them (zero in the current data). |
-| | GPS state | `GPS State` | Shown once it varies (every sounding is RTK fixed in the current data). |
+| | GPS state | `GPS State` | Shown once it varies (every sounding is RTK fixed in the current data). A code, not a quantity, so each state has its own colour: RTK fixed green, RTK float yellow, DGPS orange, single GPS red. |
 
 The remaining columns are not offered. `Azimuth` and `Trail Direction` are directions, which wrap around at north and
 suit no colour scale, and `Line Distance`, `Base ID` and `Data ID` are not measurements of the survey. Every column is
@@ -386,11 +386,14 @@ Each entry describes one item of the "Colour by" menu. A few of the defaults:
 - `scale` (optional) multiplies the values, for example 57.29578 to turn radians into degrees.
 - `from_line_start: true` (optional) subtracts the value of each line's first sounding, so the values start at zero on
   every line.
-- `colours` is `depth` (pale shallow to dark deep), `elevation` (the same ramp reversed, so a low bed is dark),
-  `sequential` (purple to yellow, kept distinct so it is never read as depth) or `diverging` (blue below zero, white at
+- `colours` is `depth` (red for shallow, through yellow, green and blue, to purple for deep), `elevation` (the same
+  ramp reversed, so a low bed is purple), `sequential` (light grey to charcoal, kept distinct so it is never read as depth) or `diverging` (blue below zero, white at
   zero, red above, with zero kept in the middle of the scale).
 - `range` (optional, for example `[0, 3]`) fixes the "All data" scale; otherwise it spans the 2nd to 98th percentile of
   all values.
+- `colours: "categories"` is for codes rather than quantities, such as the GPS state. It needs `categories`, giving each
+  value a label and a colour, for example `{"4": {"label": "RTK fixed", "colour": "#1a9850"}}`. The legend then lists
+  the values found in the data, each with its colour, and hovering over a sounding shows its label.
 - Water depth is always the first entry. A column that no file has, or that has the same value everywhere (for example
   `GPS State` when every sounding is RTK fixed), is left out of the menu, and the build log says so.
 - Derived and converted values (bed elevation, time of day, roll and pitch in degrees) are computed for the map only;
