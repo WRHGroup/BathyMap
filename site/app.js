@@ -202,8 +202,8 @@
     el('legend-note').textContent = variable.note || '';
     el('legend-note').hidden = !variable.note;
     var scaleNote = state.scaleMode === 'view'
-      ? (state.viewRange ? 'Fitted to ' + fmtNum(state.viewCount) + ' soundings in view' : '')
-      : 'Same scale for all data';
+      ? (state.viewRange ? 'Scale fitted to the ' + fmtNum(state.viewCount) + ' soundings in view' : '')
+      : 'One scale for all surveys';
     el('scale-note').textContent = scaleNote;
     [].forEach.call(document.querySelectorAll('#scale-mode button'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-mode') === state.scaleMode)); });
   }
@@ -306,7 +306,7 @@
     });
     L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
 
-    probeRing = L.circleMarker([0, 0], { radius: 7, weight: 2, color: cssVar('--accent'), fill: false, interactive: false, renderer: renderer });
+    probeRing = L.circleMarker([0, 0], { radius: 7, weight: 2, color: cssVar('--highlight'), fill: false, interactive: false, renderer: renderer });
 
     map.on('moveend zoomend', updateSoundings);
     map.on('zoomend', function () { state.projected = {}; });
@@ -324,7 +324,7 @@
   function trackStyle(id) {
     // On the satellite image and the dark basemap a dark track disappears, so unselected tracks are drawn light there.
     var sel = id === state.selected, onImagery = isDarkBase();
-    return { color: sel ? cssVar('--accent') : (onImagery ? '#f4f7f9' : cssVar('--track')), weight: sel ? 4 : 2.5, opacity: sel ? 0.95 : (onImagery ? 0.85 : 0.75) };
+    return { color: sel ? (onImagery ? '#ffffff' : cssVar('--highlight')) : (onImagery ? '#f4f7f9' : cssVar('--track')), weight: sel ? 3 : 2.5, opacity: sel ? 0.9 : (onImagery ? 0.85 : 0.75) };
   }
   function drawTracks() {
     state.lines.forEach(function (line) {
@@ -341,7 +341,7 @@
   function restyleTracks() {
     Object.keys(state.tracks).forEach(function (id) { state.tracks[id].setStyle(trackStyle(id)); });
     if (state.selected && state.tracks[state.selected]) state.tracks[state.selected].bringToFront();
-    probeRing.setStyle({ color: cssVar('--accent') });
+    probeRing.setStyle({ color: cssVar('--highlight') });
     if (shapeLayer) shapeLayer.setStyle(SHAPE_STYLE());
   }
 
@@ -452,7 +452,7 @@
       if (!layer) { state.pointLayers[line.id] = buildPointLayer(line.id).addTo(map); }
     });
     var showing = Object.keys(state.pointLayers).length > 0;
-    el('legend-hint').textContent = showing ? 'Hover or tap a sounding for its value, date and time' : 'Zoom in or select a line to see soundings';
+    el('legend-hint').textContent = showing ? 'Hover over or tap a sounding to see its value, date, and time.' : 'Zoom in or select a line to show the soundings.';
     updateViewRange();
     updateSiteMarkers();
   }
@@ -566,7 +566,7 @@
      The visitor draws a box or a polygon. Every sounding of the lines shown on the map that falls inside it is taken
      from the full-resolution CSV of its line (not the thinned map points), so the export is the complete record. */
   var SHAPE_STYLE = function () {
-    return { color: cssVar('--accent'), weight: 2, dashArray: '6 4', fillColor: cssVar('--accent'), fillOpacity: 0.08, interactive: false };
+    return { color: cssVar('--highlight'), weight: 2, dashArray: '6 4', fillColor: cssVar('--highlight'), fillOpacity: 0.08, interactive: false };
   };
   var shapeLayer = null, draftLine = null, highlightLayer = null, boxStart = null;
 
@@ -697,7 +697,7 @@
       var a = map.latLngToContainerPoint(v[v.length - 1]), b = map.latLngToContainerPoint(v[v.length - 2]);
       if (a.distanceTo(b) < 6) v.pop();
     }
-    if (v.length < 3) { renderSelectBar('Add at least three corners to close the shape.'); return; }
+    if (v.length < 3) { renderSelectBar('A polygon needs at least three corners.'); return; }
     endDrawing();
     runSelection({ type: 'polygon', bounds: L.latLngBounds(v), latlngs: v });
   }
@@ -788,7 +788,7 @@
   function highlightSelection(shape) {
     if (highlightLayer) map.removeLayer(highlightLayer);
     highlightLayer = L.layerGroup();
-    var count = 0, accent = cssVar('--accent');
+    var count = 0, accent = cssVar('--highlight');
     Object.keys(state.points).forEach(function (id) {
       if (state.hidden[id]) return;
       var p = state.points[id];
@@ -835,10 +835,10 @@
   function renderSelectBar(warning) {
     var bar = el('select-bar'), s = state.selection, html = '';
     if (state.mode === 'box') {
-      html = '<p>Drag a box over the soundings you want to export.</p><div class="select-actions"><button type="button" class="button ghost" data-act="cancel">Cancel</button></div>';
+      html = '<p>Drag a box over the soundings to be exported.</p><div class="select-actions"><button type="button" class="button ghost" data-act="cancel">Cancel</button></div>';
     } else if (state.mode === 'polygon') {
       var n = state.draft ? state.draft.vertices.length : 0;
-      html = '<p>' + (warning ? escapeHtml(warning) : n ? n + (n === 1 ? ' corner. ' : ' corners. ') + 'Keep adding corners, then tap the first corner or Finish.' : 'Click or tap the map to place the first corner of the area.') + '</p>' +
+      html = '<p>' + (warning ? escapeHtml(warning) : n ? n + (n === 1 ? ' corner. ' : ' corners. ') + 'Add corners, then close the polygon on the first corner or with Finish.' : 'Click or tap the map to place the first corner of the polygon.') + '</p>' +
         '<div class="select-actions"><button type="button" class="button" data-act="finish"' + (n < 3 ? ' disabled' : '') + '>Finish</button>' +
         '<button type="button" class="button ghost" data-act="cancel">Cancel</button></div>';
     } else if (s && s.loading) {
@@ -851,7 +851,7 @@
         '<div class="select-actions"><button type="button" class="button" data-act="download">Download CSV</button>' +
         '<button type="button" class="button ghost" data-act="clear">Clear</button></div>';
     } else if (s && s.rows) {
-      html = '<p>No soundings inside this area. Only lines shown on the map are included.</p><div class="select-actions"><button type="button" class="button ghost" data-act="clear">Clear</button></div>';
+      html = '<p>There are no soundings inside this area. Only lines shown on the map are included in a selection.</p><div class="select-actions"><button type="button" class="button ghost" data-act="clear">Clear</button></div>';
     }
     bar.innerHTML = html;
     bar.hidden = !html;
@@ -969,7 +969,7 @@
   function renderList() {
     var list = el('line-list');
     if (!state.lines.length) {
-      list.innerHTML = '<p class="note">No survey lines yet. Add .dep files to the data folder of the repository and push; the map rebuilds automatically.</p>';
+      list.innerHTML = '<p class="note">No survey lines have been published yet.</p>';
       el('list-tools').hidden = true;
       return;
     }
@@ -1002,7 +1002,7 @@
         inner += '</div>';
       });
       if (!anyLocation) { html += inner; return; }
-      var name = sec.location || 'No location given';
+      var name = sec.location || 'Location not specified';
       html += '<section class="location' + (locOpen ? '' : ' collapsed') + '"><div class="location-head">' +
         '<input type="checkbox" class="set-check" aria-label="Show all lines of ' + escapeHtml(name) + ' on the map"' + setCheckbox(sec.lines) + '>' +
         '<button type="button" class="collapse" data-key="' + escapeHtml(locKey) + '" aria-expanded="' + locOpen + '" aria-label="' + (locOpen ? 'Collapse ' : 'Expand ') + escapeHtml(name) + '">' + CHEVRON + '</button>' +
@@ -1068,10 +1068,10 @@
     row('Antenna type', ins.antenna_type);
     row('Draft', ins.draft_m ? ins.draft_m + ' m' : '');
     row('Sound velocity', ins.sound_velocity_m_s ? ins.sound_velocity_m_s + ' m/s' : '');
-    if (line.map_points < line.points) row('Map', 'showing ' + fmtNum(line.map_points) + ' of ' + fmtNum(line.points) + ' soundings; downloads have all of them');
+    if (line.map_points < line.points) row('Map', fmtNum(line.map_points) + ' of ' + fmtNum(line.points) + ' soundings are shown; the downloads include all ' + fmtNum(line.points));
     var downloads = '';
     if (f.raw) downloads += '<a class="button" href="' + escapeHtml(f.raw) + '" download="' + escapeHtml(f.raw_name) + '">Original file (.dep)</a>';
-    downloads += '<a class="button ghost" href="' + escapeHtml(f.csv) + '" download="' + escapeHtml(line.name) + '.csv">CSV, decimal degrees</a>';
+    downloads += '<a class="button ghost" href="' + escapeHtml(f.csv) + '" download="' + escapeHtml(line.name) + '.csv">CSV (decimal degrees)</a>';
     box.innerHTML =
       '<div class="detail-head"><div><h2>' + escapeHtml(line.line) + '</h2>' +
       '<p class="note">' + fmtDate(line.date) + ' · ' + fmtTime(line.start) + '–' + fmtTime(line.end) + ' (' + escapeHtml(state.site.time_reference) + ')</p></div>' +
@@ -1630,14 +1630,15 @@
       el('bed-title').textContent = (parts[2] ? parts[2] + ' · ' : '') + fmtDate(parts[0]);
     }
     el('n-bed').textContent = fmtNum(Math.round(record.points * record.spacing * record.spacing)) + ' m²';
-    el('surface-note').textContent = 'The coloured surface is interpolated between the measured soundings for viewing only. It is not measured, and ' +
-      'it is not available for download. Only the measured soundings are data.';
-    el('caveat3d').textContent = 'The surface is interpolated linearly on a ' + record.spacing + ' m grid between neighbouring passes up to ' +
-      state.site.bed_max_gap + ' m apart' + (state.site.bed_max_distance > 0 ? ', and within ' + state.site.bed_max_distance + ' m of every sounding' : '') +
-      '. It is not extended beyond the outermost passes' + (state.site.bed_max_distance > 0 ? '' : ' or beside a lone pass') +
-      ', and fades with distance from the nearest sounding.' +
-      (record.kind === 'location' && dates.length > 1 ? ' This bed combines the survey days from ' + fmtDate(dates[0]) + ' to ' + fmtDate(dates[dates.length - 1]) +
-        '; the bed may have changed between them.' : '');
+    el('surface-note').textContent = 'The coloured surface is interpolated between the measured soundings for visualisation only. It is not a ' +
+      'measurement and is not available for download; only the soundings are measured data.';
+    el('caveat3d').textContent = 'The surface was interpolated linearly on a ' + record.spacing + ' m grid between neighbouring passes up to ' +
+      state.site.bed_max_gap + ' m apart' + (state.site.bed_max_distance > 0 ? ' and within ' + state.site.bed_max_distance + ' m of every sounding' : '') +
+      (state.site.bed_fill_enclosed_holes ? ', and across gaps enclosed on all sides by the surface' : '') +
+      '. It does not extend beyond the outermost passes' + (state.site.bed_max_distance > 0 ? '' : ' or beside a single pass') +
+      ', and it fades with distance from the nearest sounding.' +
+      (record.kind === 'location' && dates.length > 1 ? ' It combines the survey days from ' + fmtDate(dates[0]) + ' to ' + fmtDate(dates[dates.length - 1]) +
+        ', and the bed could have changed between these dates.' : '');
     if (window.matchMedia('(max-width: 760px)').matches) el('controls3d').open = false;
     message3d('Loading the 3D view…');
     Promise.all([ensureThree(), fetch(record.files.points).then(function (r) {
@@ -1678,7 +1679,7 @@
       message3d('');
     }).catch(function (err) {
       console.error(err);
-      message3d(window.WebGLRenderingContext ? 'The 3D view could not be opened: ' + err.message : 'The 3D view needs WebGL, which this browser has turned off.');
+      message3d(window.WebGLRenderingContext ? 'The 3D view could not be opened: ' + err.message : 'The 3D view requires WebGL, which is turned off in this browser.');
     });
   }
   function bind3d() {
@@ -1687,7 +1688,7 @@
       if (!el('view3d').hidden) return;
       var key = bedForMapView();
       if (key) open3d(key, map.getBounds());
-      else mapNote('No survey with a 3D view is in the map view. Zoom to a survey, or use a 3D button in the list.');
+      else mapNote('There is no survey with a 3D view in the current map view. Zoom to a survey or use a 3D button in the list.');
     });
     el('base3d').innerHTML = '<option value="">None (plain background)</option>' + BASEMAPS.filter(function (b) { return !b.carto || state.site.carto_api_key; })
       .map(function (b) { return '<option value="' + escapeHtml(b.name) + '">' + escapeHtml(b.name) + '</option>'; }).join('');
@@ -1740,7 +1741,7 @@
       el('contact').textContent = [s.organisation, s.contact].filter(Boolean).join(' · ');
       el('contact').hidden = false; el('contact-label').hidden = false;
     }
-    el('generated').textContent = 'Map rebuilt ' + fmtDate(s.generated) + ' at ' + s.generated.slice(11, 16) + ' UTC.';
+    el('generated').textContent = 'Last updated on ' + fmtDate(s.generated) + ' at ' + s.generated.slice(11, 16) + ' UTC.';
     if (s.combined_csv) { el('download-all').href = s.combined_csv; el('download-all').hidden = false; }
     if (s.repository_url) { el('repo-link').href = s.repository_url; el('repo-link').hidden = false; }
   }
@@ -1775,7 +1776,7 @@
   }
 
   function showError(message) {
-    el('site-summary').textContent = 'The survey data could not be loaded';
+    el('site-summary').textContent = 'The survey data could not be loaded.';
     el('line-list').innerHTML = '<p class="note">' + escapeHtml(message) + '</p>';
   }
 
@@ -1815,7 +1816,7 @@
   }).catch(function (err) {
     console.error(err);
     showError(location.protocol === 'file:'
-      ? 'Browsers block data loading from files opened directly. Serve the built folder instead, for example: python -m http.server -d _site'
+      ? 'Browsers do not load the data of a page opened directly from disk. Serve the docs folder instead, for example with: python -m http.server -d docs 8000'
       : err.message);
   });
 })();

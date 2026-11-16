@@ -1,57 +1,55 @@
 # BathyMap
 
-BathyMap publishes raw bathymetry survey data as an interactive map on GitHub Pages:
-https://wrhgroup.github.io/BathyMap/
+BathyMap publishes raw bathymetry survey data as an interactive map on GitHub Pages
+(https://wrhgroup.github.io/BathyMap/). The raw files are stored in `data/`, and the website is built from them on a
+local computer with one command (`BathyMap build`), which writes the website to `docs/`. GitHub Pages serves `docs/`
+directly from the `main` branch; therefore, publishing an update requires only a commit and a push. The repository uses
+no GitHub Actions workflow and no Jekyll theme.
 
-The raw files live in `data/`, and the website is built from them on your own computer with one command
-(`BathyMap build`), which writes it to `docs/`. GitHub Pages serves `docs/` straight from the `main` branch, so publishing
-an update means committing and pushing. There is no GitHub Actions workflow and no Jekyll theme.
+## What the website offers
 
-## What visitors can do
+The website shows where each survey is located at three levels of detail: labelled location markers when the map is
+zoomed out, survey tracks at intermediate zoom levels, and individual soundings from zoom level 15. Hovering over or
+tapping a sounding shows its depth, position, date, and time (to a hundredth of a second, as recorded by the
+instrument). The soundings are coloured by water depth by default, and the "Colour by" menu offers other variables
+recorded with each sounding (e.g., bed elevation, GNSS height, time of day, platform speed, roll, pitch, and the age of
+the RTK corrections). The basemap can be OpenStreetMap (the default), satellite imagery, or one of five other maps, with
+optional place names and roads.
 
-- See where every survey is: labelled location markers when zoomed out, survey tracks closer in, and individual
-  soundings from zoom level 15.
-- Choose the basemap: OpenStreetMap (the default), satellite, street, topographic, light grey, dark grey or ocean.
-  Place names and roads can be laid over any of them.
-- Hover over or tap a sounding to read its depth, date, time (to a hundredth of a second, as logged) and position.
-- Colour the soundings by water depth (the default) or by another column: bed elevation, GNSS height, time of day,
-  distance along line, platform speed, roll, pitch or RTK correction age. The colour scale is fitted to the soundings
-  in view or fixed for all data.
-- Browse the lines in a list grouped by location and survey day. The list opens collapsed, can be filtered by location
-  or by text, and has checkboxes that show or hide lines on the map one at a time or all at once.
-- Open a line to see its statistics, platform, sensor and other metadata, and download it as the original `.dep`
-  file or as a CSV with decimal-degree coordinates.
-- Open any survey day or location in 3D: the measured soundings over a shaded, coloured surface interpolated between
-  them for viewing only, to rotate and zoom, with an adjustable vertical exaggeration.
-- Draw a box or a polygon on the map and download every sounding inside it as a CSV.
-- Download every line in one CSV, and share a link straight to a line (the address ends with `#<line id>`).
-- Return to the full view with the **Zoom to all data** button under the zoom buttons.
+The survey lines are listed by location and survey day. The list opens collapsed and can be filtered by location or by
+text. Also, its checkboxes show or hide individual lines, survey days, locations, or all lines on the map. Selecting a
+line opens its details (i.e., statistics, platform, sensor, and other metadata) with download links for the original
+`.dep` file and a CSV file with decimal-degree coordinates. Furthermore, every survey day and location can be opened in
+a 3D view, in which the measured soundings are drawn over a shaded surface interpolated between them for visualisation
+only. The soundings within a box or polygon drawn on the map can be downloaded as a CSV file, as can all lines
+together. A link to a single line ends with `#<line id>`.
 
 ## Repository layout
 
 ```
 BathyMap/
-├── 1_site_config.json      settings for the website (see "Configuration")
-├── data/                   the raw survey files, organised in survey folders (see "Adding new data")
+├── 1_site_config.json      settings of the website (see "Configuration")
+├── data/                   raw survey files, organised in survey folders (see "Adding new data")
 │   ├── metadata.json
 │   └── 2026-10-16/
+│       ├── metadata.json
 │       ├── L0001_2026-10-16-00-24-42.dep
 │       └── L0002_2026-10-16-00-52-33.dep
-├── docs/                   the published website, written by "BathyMap build"; never edit it by hand
-├── site/                   the website template (index.html, app.js, style.css, and in site/vendor/ the Leaflet
-│                           map library, the three.js 3D library and the fonts), copied into docs/ on every build
-├── BathyMap/               the Python package behind the BathyMap command
+├── docs/                   published website, written by "BathyMap build" (not to be edited by hand)
+├── site/                   website template (index.html, app.js, style.css, and in site/vendor/ the Leaflet map
+│                           library, the three.js 3D library, and the fonts), copied into docs/ on every build
+├── BathyMap/               Python package of the BathyMap command
 │   ├── cli.py
 │   └── site_builder.py
 ├── tests/                  pytest tests and small sample files
 └── setup.py
 ```
 
-## Setting up your computer (once)
+## Setting up a computer (once)
 
-You need Python 3.9 or newer and Git. A separate conda environment keeps BathyMap away from the packages in the
-Anaconda base environment, some of which were compiled for an older NumPy and print warnings. In the Anaconda Prompt,
-go to the repository folder (the one that contains `setup.py`) and run:
+BathyMap requires Python 3.9 or newer and Git. A separate conda environment is recommended because some packages of the
+Anaconda base environment were compiled for an older version of NumPy and print warnings. In the Anaconda Prompt, from
+the repository folder (i.e., the folder that contains `setup.py`), run:
 
 ```
 conda create -n bathymap python=3.12 -y
@@ -59,35 +57,32 @@ conda activate bathymap
 pip install -e .
 ```
 
-This installs the `BathyMap` command with its requirements: click, pandas, numpy, scipy (for the interpolated bed) and
-pyproj (for converting coordinates to metres). After updating BathyMap to a version with new requirements, run
-`pip install -e .` again in the environment. The `-e` keeps the command
-linked to this folder, so changes to the code take effect without reinstalling. In every new terminal, run
-`conda activate bathymap` before using the command.
+This installs the `BathyMap` command and its requirements: click, pandas, numpy, scipy (for the interpolated surface),
+and pyproj (for converting coordinates to meters). The `-e` option links the command to the repository folder, so
+changes to the code take effect without reinstalling. However, `pip install -e .` should be run again after an update
+that adds new requirements. In every new terminal, `conda activate bathymap` is needed before using the command.
 
 ## Publishing on GitHub Pages (once)
 
-The repository is `wrhgroup/BathyMap`. In it, open **Settings → Pages**. Under **Build and deployment**, set
-**Source** to **Deploy from a branch**, choose branch **main** and folder **/docs**, and save. GitHub publishes the site
-a minute or two later, and again after every push that changes `docs/`.
-
-To add a "Data repository" link to the website, set `repository_url` in `1_site_config.json` to
-`https://github.com/wrhgroup/BathyMap`.
+The repository is `wrhgroup/BathyMap`. In its "Settings → Pages", under "Build and deployment", set "Source" to "Deploy
+from a branch", choose the branch `main` and the folder `/docs`, and save. GitHub publishes the website around two
+minutes later, and again after every push that changes `docs/`. Setting `repository_url` in `1_site_config.json` to
+`https://github.com/wrhgroup/BathyMap` adds a "Data repository" link to the website.
 
 ## Adding new data
 
-1. Copy the raw files into a new survey folder in `data/`. To name the location, or if the platform or sensor
-   differs, add a `metadata.json` file (see below).
+1. Copy the raw files into a new survey folder in `data/`. To name the location, or if the platform or sensor differs,
+   add a `metadata.json` file (see "Metadata").
 2. From the repository folder, build the website:
 
    ```
    BathyMap build
    ```
 
-   The command reads `1_site_config.json` in the current folder. (`BathyMap build -f other_config.json` uses another
-   settings file.) It prints one block per data file: its location, platform, sensor, number of soundings and depth
-   range, and how many soundings were removed by cleaning. It ends with "website written to ...".
-3. Optionally, preview the site (see "Previewing").
+   The command reads `1_site_config.json` in the current folder (`BathyMap build -f other_config.json` uses another
+   settings file). For each data file, it prints the location, platform, sensor, number of soundings, depth range, and
+   number of soundings removed by cleaning. It ends with "website written to ...".
+3. Preview the website if needed (see "Previewing").
 4. Commit and push the data and the rebuilt website:
 
    ```
@@ -96,46 +91,43 @@ To add a "Data repository" link to the website, set `repository_url` in `1_site_
    git push
    ```
 
-If new files are in the repository but not on the website, the build was skipped or `docs/` was not committed. Run the
-build, then commit and push again. After a push, a hard refresh (Ctrl+F5) makes sure the browser loads the new version.
+If new files are in the repository but not on the website, either the build was not run or `docs/` was not committed.
+In both cases, running the build and pushing again resolves the issue. After a push, a hard refresh (Ctrl+F5) ensures
+that the browser loads the new version.
 
 ### Organising the data folder
 
-Keep one folder per survey (usually one per survey day), named with the date first so folders sort in time order, and
-drop the raw files in unchanged:
+Each survey (usually one survey day) has its own folder, named with the date first so that the folders sort in time
+order. The raw files are copied in unchanged:
 
 ```
 data/
-├── metadata.json                         applies to all data (platform, sensor)
+├── metadata.json                         applies to all data (e.g., platform and sensor)
 ├── 2026-10-16/
-│   ├── metadata.json                     applies to this survey only, e.g. its location
+│   ├── metadata.json                     applies to this survey only (e.g., its location)
 │   ├── L0001_2026-10-16-00-24-42.dep
 │   └── L0002_2026-10-16-00-52-33.dep
 └── 2026-11-03_credit-river/
     ├── metadata.json
     ├── L0001_2026-11-03-14-02-10.dep
     ├── L0002_2026-11-03-14-40-55.dep
-    └── L0002_2026-11-03-14-40-55.json    applies to this one file only
+    └── L0002_2026-11-03-14-40-55.json    applies to this file only
 ```
 
-- Use lowercase letters, digits and hyphens in folder names, without spaces. Any depth of sub-folders works.
-- Don't rename or move a file once it is published. The folder and file name form the line's identifier, which is used
-  in shared links (for example `…/BathyMap/#2026-10-16__L0001_2026-10-16-00-24-42`) and in the download file names.
-- The list on the website is grouped by the `location` in the metadata and by the survey date and area name recorded
-  inside each file, not by folder.
-- The line name shown on the website is the part of the file name before the first underscore (`L0001`).
+Folder names should use lowercase letters, digits, and hyphens, without spaces; sub-folders of any depth are read. A
+published file should not be renamed or moved because its folder and file name form the identifier of the line, which
+is used in shared links (e.g., `…/BathyMap/#2026-10-16__L0001_2026-10-16-00-24-42`) and in download file names. The
+list on the website is grouped by the `location` in the metadata and by the survey date and area name recorded in each
+file, not by folder. The line name shown on the website is the part of the file name before the first underscore
+(e.g., `L0001`).
 
-### Metadata: location, platform, sensor and anything else
+### Metadata
 
-Each line is described by entries from JSON files, merged from the general to the specific. A later level overrides
-only the entries it sets and inherits the rest:
-
-1. `survey_metadata` in `1_site_config.json` (empty by default).
-2. `metadata.json` files, from the top of `data/` down to the file's own folder. Each applies to its folder and every
-   folder inside it.
-3. A `.json` file with the same name as the data file, next to it. It applies to that file only.
-
-The repository's `data/metadata.json` describes the current platform and sensor:
+Each line is described by entries from JSON files, merged from the general to the specific: (1) `survey_metadata` in
+`1_site_config.json` (empty by default), (2) the `metadata.json` files from the top of `data/` down to the folder of
+the file, each applying to its folder and all folders inside it, and (3) a `.json` file with the same name as the data
+file, which applies to that file only. A later level overrides only the entries it sets and inherits the rest. The
+`data/metadata.json` file of the repository describes the current platform and sensor:
 
 ```json
 {
@@ -145,7 +137,7 @@ The repository's `data/metadata.json` describes the current platform and sensor:
 }
 ```
 
-A survey folder's `metadata.json` usually only names the location:
+The `metadata.json` file of a survey folder usually names only the location:
 
 ```json
 {
@@ -153,14 +145,13 @@ A survey folder's `metadata.json` usually only names the location:
 }
 ```
 
-- `location` groups the lines in the list, fills the location menu, labels the markers on the zoomed-out map and
-  appears in the line details. Spell it the same way every time you return to a place, because lines are grouped by
-  the exact text. Lines without one are listed under "No location given".
-- `platform`, `platform_type` and `sensor` have their own rows in the line details. Platform and sensor are also
-  written as columns in every CSV download. If no platform is given at any level, the antenna type recorded in the file
-  header is used.
-- Any other entry (for example `operator`, `project`, `weather` or `notes`) appears in the line details and can be found
-  with the text filter.
+The `location` entry groups the lines in the list, fills the location menu, labels the markers on the zoomed-out map,
+and appears in the line details. Lines are grouped by the exact text, so a location should be spelled the same way in
+every survey; lines without a location are listed under "Location not specified". The `platform`, `platform_type`, and
+`sensor` entries have their own rows in the line details, and the platform and sensor are also written as columns in
+every CSV download. If no platform is given at any level, the antenna type recorded in the file header is used. Any
+other entry (e.g., `operator`, `project`, `weather`, or `notes`) appears in the line details and can be found with the
+text filter.
 
 ## Previewing
 
@@ -169,28 +160,35 @@ BathyMap build
 python -m http.server -d docs 8000
 ```
 
-Then open http://localhost:8000. Stop the server with Ctrl+C before the next build, because while it runs Windows (and
-OneDrive) can keep files in `docs/` locked. Opening `docs/index.html` directly from disk does not work, because browsers
-block the data files from loading that way.
+The website is then available at http://localhost:8000. The server should be stopped with Ctrl+C before the next
+build because, while it runs, Windows and OneDrive can lock files in `docs/`. Opening `docs/index.html` directly from
+disk does not work because browsers do not load the data files of a page opened that way.
 
-## Using the map
+## Using the website
 
 ### Disclaimer
 
-Each time someone opens the site, a disclaimer appears over it and stays until they click **I understand** (or press
-Esc). It says the data are provided as they are, without warranty, may contain errors and must not be used for
-navigation, and that no liability is accepted for their use. **Read the disclaimer** in "About this data" shows it
-again. Its title, paragraphs and button text are set by `disclaimer` in `1_site_config.json`, so they can be changed
-without touching the code; `show_disclaimer: false` stops it from appearing on opening. The wording follows the
-disclaimers of other bathymetry and open-data publishers (GEBCO, USGS, Ontario Open Data), but it is not legal advice;
-have it checked by your institution if needed.
+A disclaimer appears every time the website is opened and remains until the visitor selects "I understand" or presses
+Esc. It states that the data are provided "as is", without warranty, that they can contain errors and must not be used
+for navigation, and that no liability is accepted for their use. "Read the disclaimer", under "About this data", shows
+it again. Its title, paragraphs, and button text are set by `disclaimer` in `1_site_config.json`, and
+`show_disclaimer: false` prevents it from appearing when the website opens. The wording follows the disclaimers of
+other bathymetry and open-data publishers, namely GEBCO, the United States Geological Survey (USGS), and Ontario Open
+Data. However, it is not legal advice, and it should be reviewed by the institution if required.
+
+### Appearance
+
+The website has a classical appearance: titles are set in Source Serif 4, the interface and figures in Source Sans 3,
+on white and light grey grounds (or dark grey in dark mode) with a muted navy for controls. Selected lines and
+selected areas are drawn in near-black (white on the satellite and dark maps) because neither colour appears in the
+depth scale. The colours and fonts are defined at the top of `site/style.css`.
 
 ### Basemaps
 
-The layers button at the top right of the map chooses the basemap and the overlays. None of them needs an account or
-an API key:
+The layers button at the top right of the map selects the basemap and the overlays. None of them requires an account
+or an API key.
 
-| Basemap | `default_basemap` | Source | Closest native zoom |
+| Basemap | `default_basemap` | Source | Highest native zoom |
 | --- | --- | --- | --- |
 | OpenStreetMap (default) | `openstreetmap` | OpenStreetMap standard tiles | 19 |
 | Satellite | `satellite` | Esri World Imagery | 19 |
@@ -200,246 +198,242 @@ an API key:
 | Dark grey | `dark` | Esri Dark Gray Canvas | 16 |
 | Ocean | `ocean` | Esri World Ocean Base | 16 |
 
-The **Place names** and **Roads** overlays (Esri reference layers) can be ticked over any basemap. Beyond a basemap's
-closest native zoom, its last tiles are enlarged, so the light grey, dark grey and ocean maps turn soft when zoomed in
-to the soundings. The visitor's choice of basemap and overlays is remembered in their browser, so the default only
-applies on a first visit.
-
-OpenStreetMap's tiles are drawn by volunteer-run servers, and close-up tiles of rarely viewed places can take a moment
-to appear the first time. CARTO basemaps have required an API key since 25 September 2026. CARTO offers free keys for
-non-commercial use at https://carto.com, and with one in `carto_api_key`, **CARTO Voyager** and **CARTO Positron** are
-added to the menu. (The key is visible in the published website, as with any web-map key.) Free tile services can
-change their terms; if one stops working, the others are unaffected.
+The "Place names" and "Roads" overlays (Esri reference layers) can be added to any basemap. Beyond the highest native
+zoom of a basemap, its last tiles are enlarged; therefore, the light grey, dark grey, and ocean maps become blurred
+when zoomed in to the soundings. The choice of basemap and overlays is remembered in the browser of the visitor, so the
+default applies only on a first visit. The OpenStreetMap tiles are served by volunteer-run servers, and close-up tiles
+of rarely viewed places can take a few seconds to appear the first time. CARTO basemaps have required an API key since
+25 September 2026. CARTO offers free keys for non-commercial use (https://carto.com), and a key in `carto_api_key` adds
+"CARTO Voyager" and "CARTO Positron" to the menu. The key is visible in the published website, as with any web-map key.
+Free tile services can change their terms; however, if one service stops working, the others are unaffected.
 
 ### Finding the data
 
-Any line drawn smaller than 40 pixels on screen is shown as a labelled marker with its location, number of lines and
-number of soundings. Markers closer than 70 pixels merge into one labelled "N locations". Clicking a marker zooms to it.
-The map opens showing all the data, and **Zoom to all data** returns to that view.
+Any line drawn smaller than 40 pixels on the screen is shown as a labelled marker with its location, number of lines,
+and number of soundings. Markers closer than 70 pixels merge into one marker labelled "N locations", and selecting a
+marker zooms to it. The map opens with all data in view, and the "Zoom to all data" button, under the zoom buttons,
+returns to that view.
 
 ### The line list
 
-The list opens with every location collapsed (or every survey day, when no locations are named). The arrows fold and
-unfold each location and survey day, and **Collapse all** / **Expand all** do it for the whole list. Clicking the name
-of a location or survey day zooms the map to its lines without opening it; only the arrow opens and closes it. The checkboxes
-show or hide lines on the map: **All lines** at the top (only the lines matching the current filter, when one is set),
-one per location, one per survey day and one per line. A checkbox with a dash means some of its lines are hidden.
-Selecting a line opens its details above the list, and the list keeps its place.
+The list opens with every location collapsed (or every survey day, when no locations are named). The arrow next to a
+location or survey day opens and closes it, and "Collapse all" and "Expand all" act on the whole list. Selecting the
+name of a location or survey day zooms the map to its lines without opening it. The checkboxes show or hide lines on
+the map at four levels: all lines (or all lines matching the filter, when one is set), each location, each survey day,
+and each line. A checkbox with a dash indicates that some of its lines are hidden. Selecting a line opens its details
+above the list, and the list keeps its position.
 
-### 3D view of the bed
+### 3D view
 
-Each location and each survey day has a **3D** button in the list, and each line's details have **3D view of this
-survey day**. A location's 3D view interpolates all its survey days together, for one bed of the whole location; the
-panel says when it combines several dates, because the bed may have changed between them. A location surveyed on a
-single day shares the files of that day. The 3D view replaces the map. The **Map** and **3D bed** tabs at the top switch
-between the two. **3D bed** opens the survey in the map view: of the lines shown inside the view, the location with the
-most lines (or, for lines without a location, the survey day with the most), framed on the area of the map view when
-that is smaller than the survey. With no survey in view, a note says so. **Map**, choosing a line, clicking the name of a location or survey day, and
-**Zoom to all data** return to the map. Unchecking lines that the open 3D view is built from also returns to the map, zoomed to that area, with those
-lines hidden.
+Each location and survey day has a "3D" button in the list, and the details of each line have a "3D view of this
+survey day" button. The 3D view of a location combines all its survey days into one surface; the panel states when it
+combines several dates because the bed could have changed between them. A location surveyed on a single day uses the
+files of that day. The "Map" and "3D bed" tabs at the top switch between the two views. "3D bed" opens the survey in
+the current map view (i.e., among the lines shown in the view, the location with the most lines or, for lines without
+a location, the survey day with the most lines), framed on the area of the map view when that area is smaller than the
+survey. When no survey is in view, a note says so. The map view returns with the "Map" tab, the selection of a line,
+the selection of a location or survey day name, or "Zoom to all data". Also, hiding lines that the open 3D view is
+built from returns to the map, zoomed to their area.
 
-The view shows two layers, coloured by water depth:
+The 3D view has two layers coloured by water depth. The first layer is the measured soundings (points with a dark
+rim), thinned as on the map (`max_map_points_per_line`). The second layer is a continuous surface, shaded as if lit
+from the north-west, which shows the bed interpolated between the soundings. This surface is for visualisation only: it
+is not a measurement and is not available for download, and the panel states this next to the layer. To build it, the
+soundings of the survey day (or location) are triangulated (Delaunay triangulation) in meters in the local UTM zone,
+and the depth is interpolated linearly onto a regular grid (`bed_grid_spacing`, 0.5 m by default). A triangle is
+filled when it connects two different passes of the survey and none of its sides is longer than `bed_max_gap` (30 m by
+default). As a result, the surface is continuous between neighbouring passes but does not cross wider gaps, and it
+never extends beyond the outermost passes because triangles exist only between soundings. Nothing is filled beside a
+single pass, which shows only its soundings, because values there could only be extended sideways from that pass.
+Also, a gap that is enclosed on all sides by the surface (e.g., at a turn where the boat crossed its own track) is
+filled when `bed_fill_enclosed_holes` is true (the default), provided that none of its triangles has a side longer
+than `bed_max_gap`. A gap that opens onto the edge of the survey is left empty, because filling it would extend the
+surface beyond the soundings.
+Setting `bed_max_distance` above 0 adds a band of that width around every sounding. However, beside a single pass, the
+values of this band come from triangles made of two neighbouring soundings of the pass and one sounding of the nearest
+other line, however distant.
 
-- **Measured soundings** (points with a dark rim): the soundings of the survey day, thinned like the map
-  (`max_map_points_per_line`).
-- **Interpolated surface**: a continuous surface, shaded as if lit from the north-west, showing the bed estimated
-  between the soundings. It is interpolated for viewing only: it is not measured, and it is not offered for download.
-  The build triangulates the soundings of
-  the survey day (or location) and interpolates the depth linearly onto a regular grid (`bed_grid_spacing`, 0.5 m by
-  default), in metres in the local UTM zone. A triangle of the triangulation is filled when it joins two different
-  passes of the survey and none of its sides is longer than `bed_max_gap` (30 m by default). The bed is therefore
-  continuous between neighbouring passes, but it does not bridge wider gaps, and it is never extended beyond the
-  outermost passes, because the triangles only exist between soundings. Nothing is filled beside a lone pass, which
-  shows only its measured soundings: values there could only be carried sideways from that one pass. Setting
-  `bed_max_distance` above 0 adds a strip of that width around every sounding; beside a lone pass, its values come from
-  triangles made of two neighbouring soundings of the pass and one sounding of the nearest other line, however far away.
+Two soundings belong to different passes when they come from different lines or survey days, or when the distance
+travelled along the track between them is more than `bed_pass_ratio` (2 by default) times the straight distance
+between them, as between the legs of a back-and-forth survey. A bend within one pass does not qualify; therefore, the
+inside of a curve sailed once is not filled. Each survey day is interpolated separately, so surveys of the same place
+on different dates are never combined, except in the 3D view of a location, as described above.
 
-  Two soundings count as different passes when they come from different lines or survey days, or when the boat
-  travelled more than `bed_pass_ratio` (2 by default) times the straight distance between them along its track, as
-  between the legs of a back-and-forth survey. A bend within one pass does not count, so the inside of a curve sailed
-  once is not filled.
+The view is rotated by dragging, zoomed by scrolling or pinching, and moved by right-dragging or dragging with two
+fingers. "Oblique", "From above", and "From the side" reset the camera. A basemap is laid as a flat sheet at the water
+surface around the survey, with the surveyed area removed so that the surface below is visible. The surveyed area is
+the outline of the survey (i.e., every triangle of soundings with no side longer than `bed_max_gap`), including the
+gaps inside the surface; therefore, no part of the basemap remains inside the survey. The "Water surface" option draws
+a transparent surface over the same outline. The "Basemap at the water surface" menu offers the basemaps of the map and
+"None (plain background)" for the surface alone over a grid. Until the visitor selects one, it follows the basemap of
+the map, and the selection is then remembered in the browser. The tiles are downloaded by the browser when the 3D view
+opens and are credited in the corner of the view.
 
-Drag to rotate, scroll or pinch to zoom, and right-drag or two-finger-drag to move. A basemap is laid as a flat sheet at the water surface around the survey, with the surveyed area cut out of it so the
-bed shows through. The surveyed area is the outline of the survey: every triangle joining soundings with no side longer
-than `bed_max_gap`, including the holes inside the bed where nothing is interpolated, so no part of the basemap is left
-inside it. **Water surface** draws a transparent surface over the same outline, so it never extends beyond the survey. The **Basemap at the water surface** menu offers the same basemaps as the map, and **None (plain
-background)** for the bed alone over a grid. Until the visitor picks one there, it follows the basemap of the map; their
-choice is then remembered in their browser. The tiles are downloaded by the visitor's browser when the 3D view opens,
-like the map's, and are credited in the corner.
-
-Survey areas are much wider than they are deep, so the depths are exaggerated. The 3D view opens with the exaggeration
-at which the deepest point lies a tenth of the survey's width below the water surface (for example 9× for the
-Credit River survey, about 160 m across and 1.8 m deep), between 1× and 30×, or with the number set in
-`vertical_exaggeration`; the slider changes it between 1× and 60×. The panel at the bottom right sets
-the vertical exaggeration, the size of the sounding points, which layers are shown, and a transparent water surface. **Oblique**, **From above** and **From the side** reset the camera.
-Hovering over a sounding gives its line and depth; hovering over the surface says it is interpolated for viewing only,
-with its approximate depth and how far it is from the nearest sounding. With **Fade estimates far from soundings** (on
-by default), the surface fades towards the background with distance from the nearest sounding, reaching their
-faintest at a third of `bed_max_gap`, so the parts of the bed that rest on few measurements look less certain. The colour scale follows the **This view** / **All data** choice of the map: this survey day's depths, or the
-scale shared by all surveys.
-
-The surface is an estimate, not a measurement: a single-beam survey measures one depth per sounding, and the bed
-between survey lines is only as good as the line spacing allows. The 3D view says so next to the surface, and the
-surface cannot be downloaded; the downloads hold the measured soundings only. Each survey day is interpolated on its
-own, so surveys of the same place on different dates are never blended. The 3D library is only downloaded when a
-visitor opens a 3D view.
+Survey areas are much wider than they are deep, so depths are exaggerated vertically. The 3D view opens with the
+exaggeration at which the deepest point lies one tenth of the survey width below the water surface (between 1× and
+30×), or with the value of `vertical_exaggeration`; for example, the Credit River survey (around 160 m wide and 1.8 m
+deep) opens at 9×. The slider changes the exaggeration from 1× to 60×. The panel also sets the size of the sounding
+points and the layers shown. Hovering over a sounding shows its line and depth, and hovering over the surface shows its
+approximate depth, its distance from the nearest sounding, and that it is interpolated for visualisation only. With
+"Fade the surface away from soundings" (selected by default), the surface fades towards the background with distance
+from the nearest sounding, reaching its faintest at one third of `bed_max_gap`, so that the parts of the surface
+supported by fewer measurements appear less certain. The colour scale follows the "This view" or "All data" choice of
+the map. The 3D library is downloaded only when a visitor opens a 3D view.
 
 ### Colouring the soundings
 
-The **Colour by** menu in the legend switches between the map variables set in `map_variables` (see
-"Configuration"). With the default settings and the CHC files, the menu offers:
+The "Colour by" menu in the legend switches between the variables set in `map_variables` (see "Configuration"). With
+the default settings and the CHC files, the menu offers the following variables.
 
-| Group | Variable | From the column | Use |
+| Group | Variable | Column | Description |
 | --- | --- | --- | --- |
-| Bathymetry | Water depth | `Depth` | The depth as logged by the echosounder (the draft recorded in the file header is listed in each line's details). |
-| | Bed elevation | `Height` − `Depth` | The shape of the bed (see "Heights are ellipsoidal"). |
-| | GNSS height | `Height` | The height of the GNSS antenna or water surface (see "Heights are ellipsoidal"). |
-| Survey | Time of day | `Time` | The order in which the soundings were collected. |
-| | Distance along line | `Trail Distance` | How far the platform had travelled since the first sounding of the line. The raw column counts from the start of the survey session in the CHC software and carries on from one file to the next (L0001 starts at 80 m, L0002 at 1,206 m), so the first value of each line is subtracted. The CSV keeps the raw values. |
-| | Platform speed | `Speed` | Fast runs give sparser soundings. |
+| Bathymetry | Water depth | `Depth` | Depth as recorded by the echosounder (the draft recorded in the file header is listed in the line details). |
+| | Bed elevation | `Height` − `Depth` | Shape of the bed (see "Heights are relative to the ellipsoid"). |
+| | GNSS height | `Height` | Height of the GNSS antenna or water surface (see "Heights are relative to the ellipsoid"). |
+| Survey | Time of day | `Time` | Order in which the soundings were collected. |
+| | Distance along line | `Trail Distance` | Distance travelled since the first sounding of the line. The raw column counts from the start of the survey session in the CHC software and continues from one file to the next (L0001 starts at 80 m and L0002 at 1,206 m); therefore, the first value of each line is subtracted. The CSV files keep the raw values. |
+| | Platform speed | `Speed` | Higher speeds give sparser soundings. |
 | | Flow velocity | `Flow Velocity` | Shown once a survey records it (zero in the current data). |
-| Quality | Roll, Pitch | `Roll`, `Pitch` | Tilt of the platform, converted from radians to degrees. A tilted single-beam transducer measures off vertical. Blue is negative, red positive, white zero. |
-| | Correction age | `Diff Delay` | Age of the RTK corrections in seconds; older corrections mean less accurate positions. |
+| Quality | Roll, pitch | `Roll`, `Pitch` | Tilt of the platform, converted from radians to degrees. A tilted single-beam transducer measures away from the vertical. Blue is negative, red positive, and white zero. |
+| | Correction age | `Diff Delay` | Age of the RTK corrections in seconds; older corrections give less accurate positions. |
 | | Horizontal and vertical precision | `HRMS`, `VRMS` | Shown once a survey records them (zero in the current data). |
-| | GPS state | `GPS State` | Shown once it varies (every sounding is RTK fixed in the current data). A code, not a quantity, so each state has its own colour: RTK fixed green, RTK float yellow, DGPS orange, single GPS red. |
+| | GPS state | `GPS State` | Shown once it varies (every sounding is RTK fixed in the current data). The state is a code rather than a quantity, so each state has its own colour: RTK fixed green, RTK float yellow, DGPS orange, and single GPS red. |
 
 The remaining columns are not offered. `Azimuth` and `Trail Direction` are directions, which wrap around at north and
-suit no colour scale, and `Line Distance`, `Base ID` and `Data ID` are not measurements of the survey. Every column is
-still in the CSV downloads.
+suit no colour scale, and `Line Distance`, `Base ID`, and `Data ID` are not survey measurements. However, every column
+is included in the CSV downloads.
 
-The two buttons under the colour scale set its range:
-
-- **This view** (the default) stretches the colours over the 2nd to 98th percentile of the soundings in view, updated
-  after each pan or zoom, so small differences stand out wherever you look.
-- **All data** keeps one scale for every survey, so colours can be compared between places.
+The two buttons under the colour scale set its range. "This view" (the default) stretches the colours over the 2nd to
+98th percentile of the soundings in view and is updated after each pan or zoom, so that small differences are visible
+in any part of a survey. "All data" keeps one scale for all surveys, so that colours can be compared between places.
+In both cases, the legend marks the ends of the scale with ≤ and ≥ because the few soundings beyond these percentiles
+take the end colours.
 
 ### Exporting an area
 
-The two dashed buttons below **Zoom to all data** select soundings:
-
-- **Box**: press, drag and release over the soundings.
-- **Polygon**: click or tap each corner, then click the first corner, double-click, or press **Finish**.
-
-The bar at the top of the map then shows how many soundings were selected, from how many lines, their depth range and
-time span, with a **Download CSV** button. Esc cancels a shape being drawn. The export is cut from the full CSV of each
-line, so it contains every selected sounding even where the map shows a thinned line. Its columns are `Line`,
-`Datetime`, `Latitude`, `Longitude`, `Depth`, `Platform`, `Sensor`, followed by every other column of the original
-file. Hidden lines are left out.
+The two dashed buttons below "Zoom to all data" select soundings with a box (press, drag, and release) or a polygon
+(select each corner, then close the polygon on the first corner, with a double-click, or with "Finish"). The bar at
+the top of the map then shows the number of soundings selected, the number of lines, their depth range, and their time
+span, with a "Download CSV" button; Esc cancels a shape being drawn. The export is taken from the full CSV file of each
+line, so it includes every selected sounding, even where the map shows a thinned line. Its columns are `Line`,
+`Datetime`, `Latitude`, `Longitude`, `Depth`, `Platform`, and `Sensor`, followed by every other column of the original
+file. Hidden lines are excluded.
 
 ## Configuration (`1_site_config.json`)
 
 Paths are relative to the JSON file, which stays at the top of the repository. Every key is optional except
-`data_directory`. A key that is left out takes its default, and the build prints a line saying so.
+`data_directory`. A key that is left out takes its default value, and the build prints a line stating so.
 
-| Key | Default | What it does |
+| Key | Default | Description |
 | --- | --- | --- |
 | `data_directory` | required | Folder with the raw files. |
 | `site_template_directory` | `site` | Website template copied into the output. |
-| `output_directory` | `docs` | Where the website is written; must match the Pages folder. It is emptied on each build, and the build refuses to empty a folder that a previous build did not create (it looks for the `.bathymap-build` file it leaves there). |
-| `site_title`, `site_description` | `BathyMap`, empty | The title is shown in the header and the browser tab, the description in "About this data". |
+| `output_directory` | `docs` | Folder in which the website is written; it must match the Pages folder. It is emptied on each build, and the build does not empty a folder that a previous build did not create (it checks for the `.bathymap-build` file it leaves there). |
+| `site_title`, `site_description` | `BathyMap`, empty | The title is shown in the header and the browser tab, and the description in "About this data". |
 | `organisation`, `contact`, `licence` | empty | Shown in "About this data" when set. |
-| `show_disclaimer` | `true` | Shows the disclaimer each time the site is opened. |
-| `disclaimer` | no warranty, not for navigation, no liability | The disclaimer: `title`, `paragraphs` (a list, one text per paragraph) and `button`. |
-| `repository_url` | empty | GitHub address of the repository. Adds a "Data repository" link, and is needed when `copy_raw_files` is `false`. |
-| `repository_branch` | `main` | Branch used for the raw-file links when `copy_raw_files` is `false`. |
+| `show_disclaimer` | `true` | Shows the disclaimer every time the website is opened. |
+| `disclaimer` | no warranty, not for navigation, no liability | Text of the disclaimer: `title`, `paragraphs` (a list with one text per paragraph), and `button`. |
+| `repository_url` | empty | GitHub address of the repository. It adds a "Data repository" link and is needed when `copy_raw_files` is `false`. |
+| `repository_branch` | `main` | Branch used for the links to the raw files when `copy_raw_files` is `false`. |
 | `file_extensions` | `[".dep"]` | File types read from the data folder. |
-| `accepted_gps_states` | `[]` (keep all) | For example `[4]` keeps RTK-fixed soundings only. |
-| `max_map_points_per_line` | `3000` | Soundings drawn on the map per line. Downloads always contain every sounding. |
-| `max_track_points_per_line` | `200` | Points in the simplified track drawn when zoomed out. |
-| `copy_raw_files` | `true` | Copies the raw files into `docs/` so they download from the website. With `false`, the download links point to the files in `data/` on GitHub instead, which keeps the published site smaller. |
+| `accepted_gps_states` | `[]` (keep all) | GPS states kept by cleaning; for example, `[4]` keeps RTK-fixed soundings only. |
+| `max_map_points_per_line` | `3000` | Soundings drawn on the map for each line. The downloads always contain every sounding. |
+| `max_track_points_per_line` | `200` | Points of the simplified track drawn when the map is zoomed out. |
+| `copy_raw_files` | `true` | Copies the raw files into `docs/` so that they are downloaded from the website. With `false`, the download links point to the files in `data/` on GitHub, which keeps the published website smaller. |
 | `write_combined_csv` | `true` | Writes `data/all_lines.csv` with every line, for the "Download all lines" button. |
 | `survey_metadata` | `{}` | Metadata applied to every line before the `metadata.json` files are read. |
-| `metadata_file_name` | `metadata.json` | Name of the per-folder metadata files. |
-| `time_reference` | `as logged by the instrument` | Describes the clock of the times, for example `UTC`. |
-| `depth_reference` | `as logged by the instrument` | Describes what the depths are measured from. |
-| `height_reference` | `as logged by the instrument` | Describes the vertical reference of the GNSS heights; shown as "Heights" in "About this data". |
-| `depth_colour_range` | automatic | `[min, max]` in metres for the "All data" depth colour scale; automatic uses the 2nd to 98th percentile of all depths. |
-| `map_variables` | the 13 variables listed under "Colouring the soundings" | The "Colour by" menu (see below). |
-| `default_basemap` | `openstreetmap` | Basemap on a visitor's first visit: `openstreetmap`, `satellite`, `street`, `topographic`, `light`, `dark` or `ocean` (or `carto-voyager` and `carto-positron` with a CARTO key). |
+| `metadata_file_name` | `metadata.json` | Name of the metadata files of the folders. |
+| `time_reference` | `as recorded by the instrument` | Description of the clock of the times (e.g., `UTC`). |
+| `depth_reference` | `as recorded by the instrument` | Description of the reference of the depths. |
+| `height_reference` | `as recorded by the instrument` | Description of the vertical reference of the GNSS heights, shown as "Heights" in "About this data". |
+| `depth_colour_range` | automatic | `[min, max]` in meters for the "All data" depth scale; automatic uses the 2nd to 98th percentile of all depths. |
+| `map_variables` | the 13 variables listed under "Colouring the soundings" | Variables of the "Colour by" menu (see below). |
+| `default_basemap` | `openstreetmap` | Basemap on the first visit: `openstreetmap`, `satellite`, `street`, `topographic`, `light`, `dark`, or `ocean` (or `carto-voyager` and `carto-positron` with a CARTO key). |
 | `carto_api_key` | empty | CARTO key; when set, the CARTO basemaps are added to the menu. |
 | `start_with_list_collapsed` | `true` | Opens the line list collapsed. |
-| `interpolate_bed` | `true` | Interpolates the bed of each survey day for the 3D view. With `false`, no 3D view is offered. |
-| `bed_grid_spacing` | `0.5` | Grid spacing of the interpolated bed, in metres. |
-| `bed_max_distance` | `0` | When above 0, the bed is also filled within this distance (metres) of every sounding, even beside a lone pass, where the values are carried sideways from that pass. |
-| `bed_max_gap` | `30` | Largest gap (metres) between passes that the bed is filled across. Set it a little above the usual line spacing of the surveys. |
-| `bed_pass_ratio` | `2` | Two soundings of one line count as different passes when the track between them is more than this many times their straight distance apart. |
-| `vertical_exaggeration` | `auto` | Starting vertical exaggeration of the 3D view: `auto` (the deepest point a tenth of the survey's width below the water surface, 1× to 30×) or a number such as `5`. |
-| `bed_max_points` | `250000` | Largest number of interpolated points per survey day. When a survey would need more, the build widens the grid spacing and says so. |
+| `interpolate_bed` | `true` | Interpolates the surface of each survey day and location for the 3D view. With `false`, no 3D view is offered. |
+| `bed_grid_spacing` | `0.5` | Grid spacing of the interpolated surface, in meters. |
+| `bed_max_distance` | `0` | When above 0, the surface is also filled within this distance (in meters) of every sounding, including beside a single pass, where values are extended sideways from that pass. |
+| `bed_max_gap` | `30` | Largest gap (in meters) between passes across which the surface is filled. It should be slightly larger than the usual line spacing of the surveys. |
+| `bed_pass_ratio` | `2` | Two soundings of one line belong to different passes when the track between them is more than this number of times their straight distance apart. |
+| `bed_fill_enclosed_holes` | `true` | Fills the gaps in the surface that are enclosed on all sides by the surface. Gaps that open onto the edge of the survey remain empty. |
+| `vertical_exaggeration` | `auto` | Initial vertical exaggeration of the 3D view: `auto` (the deepest point one tenth of the survey width below the water surface, between 1× and 30×) or a number such as `5`. |
+| `bed_max_points` | `250000` | Largest number of interpolated points for each survey day or location. When a survey requires more, the build widens the grid spacing and reports it. |
 
 ### `map_variables`
 
-Each entry describes one item of the "Colour by" menu. A few of the defaults:
+Each entry describes one item of the "Colour by" menu. Four of the default entries are shown below.
 
 ```json
 "map_variables": [
     {"column": "Depth", "label": "Water depth", "unit": "m", "colours": "depth", "decimals": 3, "group": "Bathymetry"},
-    {"column": "Height - Depth", "label": "Bed elevation", "note": "GNSS height minus water depth. Above the ellipsoid, not sea level", "unit": "m", "colours": "elevation", "decimals": 3, "group": "Bathymetry"},
+    {"column": "Height - Depth", "label": "Bed elevation", "note": "GNSS height minus water depth, relative to the ellipsoid (not sea level).", "unit": "m", "colours": "elevation", "decimals": 3, "group": "Bathymetry"},
     {"column": "Time of day", "label": "Time of day", "unit": "", "colours": "sequential", "decimals": 0, "format": "time", "group": "Survey"},
-    {"column": "Roll", "label": "Roll", "note": "Logged in radians, shown in degrees", "unit": "°", "scale": 57.29578, "colours": "diverging", "decimals": 1, "group": "Quality"}
+    {"column": "Roll", "label": "Roll", "note": "Recorded in radians and shown in degrees.", "unit": "°", "scale": 57.29578, "colours": "diverging", "decimals": 1, "group": "Quality"}
 ]
 ```
 
-- `column` is a column of the raw file, the difference of two columns written as `"A - B"`, or `"Time of day"` (the
-  time of each sounding).
-- `label`, `unit`, `decimals` and `note` (optional, shown under the scale) control how it is shown. `group` places it
-  under a heading in the menu. `format: "time"` shows the values as clock times.
-- `scale` (optional) multiplies the values, for example 57.29578 to turn radians into degrees.
-- `from_line_start: true` (optional) subtracts the value of each line's first sounding, so the values start at zero on
-  every line.
-- `colours` is `depth` (red for shallow, through yellow, green and blue, to purple for deep), `elevation` (the same
-  ramp reversed, so a low bed is purple), `sequential` (light grey to charcoal, kept distinct so it is never read as depth) or `diverging` (blue below zero, white at
-  zero, red above, with zero kept in the middle of the scale).
-- `range` (optional, for example `[0, 3]`) fixes the "All data" scale; otherwise it spans the 2nd to 98th percentile of
-  all values.
-- `colours: "categories"` is for codes rather than quantities, such as the GPS state. It needs `categories`, giving each
-  value a label and a colour, for example `{"4": {"label": "RTK fixed", "colour": "#1a9850"}}`. The legend then lists
-  the values found in the data, each with its colour, and hovering over a sounding shows its label.
-- Water depth is always the first entry. A column that no file has, or that has the same value everywhere (for example
-  `GPS State` when every sounding is RTK fixed), is left out of the menu, and the build log says so.
-- Derived and converted values (bed elevation, time of day, roll and pitch in degrees) are computed for the map only;
-  the CSV downloads keep the original columns.
-- Points files grow with each variable (about 210 KB per line of 2,000 soundings with the defaults). They are only
-  loaded when a line is selected or zoomed in to.
+The `column` entry is a column of the raw file, the difference of two columns written as `"A - B"`, or `"Time of day"`
+(i.e., the time of each sounding). The `label`, `unit`, `decimals`, and `note` entries (the note is optional and is
+shown under the scale) control the display, `group` places the variable under a heading in the menu, and
+`format: "time"` shows values as clock times. The optional `scale` entry multiplies the values (e.g., 57.29578 to
+convert radians to degrees), and `from_line_start: true` subtracts the value of the first sounding of each line, so
+that the values start at zero on every line.
 
-## Heights are ellipsoidal, not above sea level
+The `colours` entry selects the colour scale: `depth` (red for shallow, through yellow, green, and blue, to purple for
+deep), `elevation` (the same scale reversed, so a low bed is purple), `sequential` (light grey to charcoal, which is not
+used by the depth scale and therefore cannot be mistaken for depth), `diverging` (blue below zero, white at zero, and
+red above, with zero kept in the middle of the scale), or `categories`. The `categories` option is for codes rather
+than quantities, such as the GPS state, and requires a `categories` entry that gives each value a label and a colour
+(e.g., `{"4": {"label": "RTK fixed", "colour": "#1a9850"}}`). The legend then lists the values found in the data with
+their colours, and hovering over a sounding shows its label. The optional `range` entry (e.g., `[0, 3]`) fixes the "All
+data" scale; otherwise, the scale spans the 2nd to 98th percentile of all values.
+
+Water depth is always the first entry. A column that no file contains, or that has the same value everywhere (e.g.,
+`GPS State` when every sounding is RTK fixed), is left out of the menu, and the build log reports it. Derived and
+converted values (i.e., bed elevation, time of day, and roll and pitch in degrees) are computed for the map only, and
+the CSV downloads keep the original columns. The map files grow with each variable (around 210 KB for a line of 2,000
+soundings with the default variables); however, they are loaded only when a line is selected or zoomed in to.
+
+## Heights are relative to the ellipsoid
 
 The `Height` column of the CHC files is the height measured by the GNSS receiver. No geoid model was applied in the
-survey software, so it is the height above the ellipsoid, the smooth mathematical shape of the Earth that GNSS works
-with, and not the height above sea level used on maps. The difference between the two, the geoid height, depends on
-the location: in Canada it is tens of metres, and it changes by several metres across a province. GNSS height and bed
-elevation are therefore far from the contours of the topographic basemap, and the gap is not the same at every
-survey site. The official geoid height of any point in Canada is given by NRCan's GPS-H tool
-(https://webapp.csrs-scrs.nrcan-rncan.gc.ca/geod/tools-outils/gpsh.php?locale=en).
+survey software; therefore, the height is relative to the ellipsoid (i.e., the smooth mathematical shape of the Earth
+used by GNSS) rather than to sea level, as on topographic maps. The difference between the two (i.e., the geoid height)
+depends on the location. In Canada, it is tens of meters and changes by several meters across a province. As a result,
+GNSS height and bed elevation differ from the contours of the topographic basemap, and the difference is not the same
+at every survey site. The official geoid height of any point in Canada is given by the GPS-H tool of Natural Resources
+Canada (https://webapp.csrs-scrs.nrcan-rncan.gc.ca/geod/tools-outils/gpsh.php?locale=en).
 
-The relative values are unaffected. In the 2026-10-16 survey Height stays within 20 cm (standard deviation 3 cm), so
-Height − Depth shows the shape of the bed correctly. It may also include the height of the GNSS antenna above the water
-(the file header records 0.20 m as "Antenna H"). To obtain heights above sea level (CGVD2013 in Canada), set the
-survey project's height system to CGVD2013 with the CGG2013a geoid model in the CHC software before exporting.
-
-The website says this in three places: the "Heights" line in "About this data" (from `height_reference`), and the
-notes under the colour scale for GNSS height and bed elevation.
+The relative values are unaffected. In the 2026-10-16 survey, `Height` varies within 20 cm (standard deviation 3 cm);
+therefore, `Height` − `Depth` represents the shape of the bed correctly. The height could also include the height of
+the GNSS antenna above the water (the file header records 0.20 m as "Antenna H"). To obtain heights above sea level
+(CGVD2013 in Canada), the height system of the survey project should be set to CGVD2013 with the CGG2013a geoid model
+in the CHC software before export. The website states this in three places: the "Heights" line in "About this data"
+(from `height_reference`) and the notes under the colour scale for GNSS height and bed elevation.
 
 ## What the build does
 
 1. Reads `1_site_config.json`.
 2. Finds every file with a listed extension in `data/` and its sub-folders.
 3. Empties `docs/` and copies the template from `site/` into it.
-4. For each file: reads the header (area, date, antenna type, draft, sound velocity) and the soundings; converts the
-   coordinates from degrees-minutes-seconds to decimal degrees; gives every sounding a full date and time (handling
-   lines that cross midnight); removes invalid soundings; and merges the metadata.
-5. Writes, for each line, the map points (`docs/data/points/`), a full-resolution CSV (`docs/data/csv/`), a copy of the
-   raw file (`docs/data/raw/`) and its rows in `docs/data/all_lines.csv`.
-6. Interpolates the bed of each survey day (date, area and location) and of each named location (all its survey days
-   together), and writes it to `docs/data/bed/`: a JSON file for the 3D view and a CSV file for download.
-7. Writes `docs/data/index.json`, the summary the website reads first: lines, survey days with a 3D view,
-   statistics, simplified tracks, metadata, colour scales and download links.
+4. For each file, reads the header (area, date, antenna type, draft, and sound velocity) and the soundings, converts
+   the coordinates from degrees, minutes, and seconds to decimal degrees, assigns a full date and time to every sounding
+   (including lines that cross midnight), removes invalid soundings, and merges the metadata.
+5. For each line, writes the map points (`docs/data/points/`), a full-resolution CSV file (`docs/data/csv/`), a copy of
+   the raw file (`docs/data/raw/`), and its rows in `docs/data/all_lines.csv`.
+6. Interpolates the surface of each survey day (date, area, and location) and each named location (all its survey days
+   together) and writes it to `docs/data/bed/` as a JSON file for the 3D view. No download of the surface is written.
+7. Writes `docs/data/index.json`, the summary that the website reads first: lines, survey days and locations with a 3D
+   view, statistics, simplified tracks, metadata, colour scales, and download links.
 
-### What is cleaned
+### Cleaning
 
-Soundings are removed when the depth is missing or not positive, a coordinate is missing or out of range, or (when
-`accepted_gps_states` is set) the GPS state is not accepted. The build log reports how many soundings were removed from
-each file. The raw file download is always the untouched original. GPS states follow the NMEA convention used by the
-receiver: 1 = GPS, 2 = DGPS, 4 = RTK fixed, 5 = RTK float.
+A sounding is removed when its depth is missing or not positive, when a coordinate is missing or out of range, or
+(when `accepted_gps_states` is set) when its GPS state is not accepted. The build log reports the number of soundings
+removed from each file, and the raw file download is always the unchanged original. GPS states follow the National
+Marine Electronics Association (NMEA) convention used by the receiver: 1 = GPS, 2 = DGPS, 4 = RTK fixed, and 5 = RTK
+float.
 
 ## Tests
 
@@ -450,21 +444,23 @@ pip install pytest
 pytest
 ```
 
-The tests build a small site from the sample files in `tests/files/` into `tests/files/_test_site/`, which Git ignores.
+The tests build a small website from the sample files in `tests/files/` into `tests/files/_test_site/`, which Git
+ignores.
 
 ## Limits
 
-GitHub recommends keeping a repository under 1 GB, a published Pages site cannot exceed 1 GB, and Git rejects single
-files over 100 MB. Git stores identical files only once, so the raw copies in `docs/data/raw/` add nothing to the size
-of the repository. The CSV and map files in `docs/` do add roughly two to three times the size of the raw data, and each survey day adds
-its interpolated bed (about 1.3 MB for the 2026-10-16 survey at 0.5 m; a coarser `bed_grid_spacing` shrinks it). When the
-archive grows large, set `copy_raw_files` to `false` to shrink the published site. For a much larger archive, keep the
-raw files in GitHub Releases or a DOI archive such as Zenodo and keep this repository for the map.
+GitHub recommends keeping a repository under 1 GB, a published Pages website cannot exceed 1 GB, and Git rejects
+single files over 100 MB. Git stores identical files only once, so the raw copies in `docs/data/raw/` add nothing to
+the size of the repository. However, the CSV and map files in `docs/` add around two to three times the size of the
+raw data, and each survey day adds its interpolated surface (around 1.3 MB for the 2026-10-16 survey at 0.5 m; a
+coarser `bed_grid_spacing` reduces it). When the archive grows large, setting `copy_raw_files` to `false` reduces the
+size of the published website. For a much larger archive, the raw files could be kept in GitHub Releases or a DOI
+archive such as Zenodo, with this repository kept for the map.
 
 ## Third-party components
 
-The map uses [Leaflet](https://leafletjs.com) 1.9.4 (BSD-2-Clause), the 3D view uses [three.js](https://threejs.org)
-r147 (MIT), and the site uses the fonts Barlow Semi Condensed, Source Sans 3
-and JetBrains Mono (SIL Open Font License). All of them are included in `site/vendor/` with their licences, so the
-website loads nothing from font or script CDNs. Basemap tiles come from OpenStreetMap and Esri, and are credited in the
-corner of the map.
+The map uses Leaflet 1.9.4 (https://leafletjs.com; BSD-2-Clause licence), the 3D view uses three.js r147
+(https://threejs.org; MIT licence), and the website uses the fonts Source Serif 4 and Source Sans 3 (SIL Open Font
+Licence). All of them are included in `site/vendor/` with their licences, so the website loads nothing from font or
+script content delivery networks. The basemap tiles come from OpenStreetMap and Esri and are credited in the corner of
+the map.

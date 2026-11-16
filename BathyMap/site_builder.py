@@ -149,8 +149,8 @@ class BathymetrySiteBuilder(object):
             self.depth_colour_range = loaded_file.pop('depth_colour_range')
 
         if loaded_file.get('time_reference') is None:
-            print('time reference set to "as logged by the instrument". If you wish to change this default value, add time_reference to the inputs provided in the JSON file')
-            self.time_reference = 'as logged by the instrument'
+            print('time reference set to "as recorded by the instrument". If you wish to change this default value, add time_reference to the inputs provided in the JSON file')
+            self.time_reference = 'as recorded by the instrument'
         else:
             self.time_reference = loaded_file.pop('time_reference')
 
@@ -167,8 +167,8 @@ class BathymetrySiteBuilder(object):
             self.metadata_file_name = loaded_file.pop('metadata_file_name')
 
         if loaded_file.get('depth_reference') is None:
-            print('depth reference set to "as logged by the instrument". If you wish to change this default value, add depth_reference to the inputs provided in the JSON file')
-            self.depth_reference = 'as logged by the instrument'
+            print('depth reference set to "as recorded by the instrument". If you wish to change this default value, add depth_reference to the inputs provided in the JSON file')
+            self.depth_reference = 'as recorded by the instrument'
         else:
             self.depth_reference = loaded_file.pop('depth_reference')
 
@@ -176,15 +176,15 @@ class BathymetrySiteBuilder(object):
             print('map variables set to the bathymetry, survey and quality columns of CHC files. If you wish to change this default value, add map_variables to the inputs provided in the JSON file')
             self.map_variables = [
                 {'column': 'Depth', 'label': 'Water depth', 'unit': 'm', 'colours': 'depth', 'decimals': 3, 'group': 'Bathymetry'},
-                {'column': 'Height - Depth', 'label': 'Bed elevation', 'note': 'GNSS height minus water depth. Above the ellipsoid, not sea level', 'unit': 'm', 'colours': 'elevation', 'decimals': 3, 'group': 'Bathymetry'},
-                {'column': 'Height', 'label': 'GNSS height', 'note': 'Above the ellipsoid, not sea level', 'unit': 'm', 'colours': 'sequential', 'decimals': 3, 'group': 'Bathymetry'},
+                {'column': 'Height - Depth', 'label': 'Bed elevation', 'note': 'GNSS height minus water depth, relative to the ellipsoid (not sea level).', 'unit': 'm', 'colours': 'elevation', 'decimals': 3, 'group': 'Bathymetry'},
+                {'column': 'Height', 'label': 'GNSS height', 'note': 'Relative to the ellipsoid (not sea level).', 'unit': 'm', 'colours': 'sequential', 'decimals': 3, 'group': 'Bathymetry'},
                 {'column': 'Time of day', 'label': 'Time of day', 'unit': '', 'colours': 'sequential', 'decimals': 0, 'format': 'time', 'group': 'Survey'},
-                {'column': 'Trail Distance', 'label': 'Distance along line', 'note': 'From the first sounding of each line', 'unit': 'm', 'from_line_start': True, 'colours': 'sequential', 'decimals': 1, 'group': 'Survey'},
+                {'column': 'Trail Distance', 'label': 'Distance along line', 'note': 'Measured from the first sounding of each line.', 'unit': 'm', 'from_line_start': True, 'colours': 'sequential', 'decimals': 1, 'group': 'Survey'},
                 {'column': 'Speed', 'label': 'Platform speed', 'unit': 'm/s', 'colours': 'sequential', 'decimals': 2, 'group': 'Survey'},
                 {'column': 'Flow Velocity', 'label': 'Flow velocity', 'unit': 'm/s', 'colours': 'sequential', 'decimals': 2, 'group': 'Survey'},
-                {'column': 'Roll', 'label': 'Roll', 'note': 'Logged in radians, shown in degrees', 'unit': '°', 'scale': 57.29578, 'colours': 'diverging', 'decimals': 1, 'group': 'Quality'},
-                {'column': 'Pitch', 'label': 'Pitch', 'note': 'Logged in radians, shown in degrees', 'unit': '°', 'scale': 57.29578, 'colours': 'diverging', 'decimals': 1, 'group': 'Quality'},
-                {'column': 'Diff Delay', 'label': 'Correction age', 'note': 'Age of the RTK corrections', 'unit': 's', 'colours': 'sequential', 'decimals': 1, 'group': 'Quality'},
+                {'column': 'Roll', 'label': 'Roll', 'note': 'Recorded in radians and shown in degrees.', 'unit': '°', 'scale': 57.29578, 'colours': 'diverging', 'decimals': 1, 'group': 'Quality'},
+                {'column': 'Pitch', 'label': 'Pitch', 'note': 'Recorded in radians and shown in degrees.', 'unit': '°', 'scale': 57.29578, 'colours': 'diverging', 'decimals': 1, 'group': 'Quality'},
+                {'column': 'Diff Delay', 'label': 'Correction age', 'note': 'Age of the RTK corrections.', 'unit': 's', 'colours': 'sequential', 'decimals': 1, 'group': 'Quality'},
                 {'column': 'HRMS', 'label': 'Horizontal precision', 'unit': 'm', 'colours': 'sequential', 'decimals': 3, 'group': 'Quality'},
                 {'column': 'VRMS', 'label': 'Vertical precision', 'unit': 'm', 'colours': 'sequential', 'decimals': 3, 'group': 'Quality'},
                 {'column': 'GPS State', 'label': 'GPS state', 'unit': '', 'colours': 'categories', 'categories': {'4': {'label': 'RTK fixed', 'colour': '#1a9850'}, '5': {'label': 'RTK float', 'colour': '#fdd835'}, '2': {'label': 'DGPS', 'colour': '#fb8c00'}, '1': {'label': 'GPS (single)', 'colour': '#d32f2f'}, '3': {'label': 'PPS', 'colour': '#8e24aa'}, '6': {'label': 'Estimated', 'colour': '#6d4c41'}, '0': {'label': 'Invalid', 'colour': '#212121'}}, 'decimals': 0, 'group': 'Quality'}
@@ -203,8 +203,8 @@ class BathymetrySiteBuilder(object):
                 raise ValueError('the map variable "{}" has colours "categories", so it needs "categories": {{"value": {{"label": ..., "colour": ...}}}}'.format(map_variable['column']))
 
         if loaded_file.get('height_reference') is None:
-            print('height reference set to "as logged by the instrument". If you wish to change this default value, add height_reference to the inputs provided in the JSON file')
-            self.height_reference = 'as logged by the instrument'
+            print('height reference set to "as recorded by the instrument". If you wish to change this default value, add height_reference to the inputs provided in the JSON file')
+            self.height_reference = 'as recorded by the instrument'
         else:
             self.height_reference = loaded_file.pop('height_reference')
 
@@ -255,6 +255,12 @@ class BathymetrySiteBuilder(object):
         else:
             self.bed_max_gap = float(loaded_file.pop('bed_max_gap'))
 
+        if loaded_file.get('bed_fill_enclosed_holes') is None:
+            print('bed fill enclosed holes set to True (holes surrounded on all sides by the surface are filled). If you wish to change this default value, add bed_fill_enclosed_holes to the inputs provided in the JSON file')
+            self.bed_fill_enclosed_holes = True
+        else:
+            self.bed_fill_enclosed_holes = loaded_file.pop('bed_fill_enclosed_holes')
+
         if loaded_file.get('bed_pass_ratio') is None:
             print('bed pass ratio set to 2 (two soundings are on different passes when the track between them is more than twice the distance between them). If you wish to change this default value, add bed_pass_ratio to the inputs provided in the JSON file')
             self.bed_pass_ratio = 2.0
@@ -277,12 +283,16 @@ class BathymetrySiteBuilder(object):
 
         if loaded_file.get('disclaimer') is None:
             print('disclaimer set to the default text (no warranty, not for navigation, no liability). If you wish to change this default value, add disclaimer to the inputs provided in the JSON file')
-            self.disclaimer = {'title': 'Before you use these data', 'paragraphs': [
-                'The bathymetry data on this site are raw survey measurements, shared for research and education. They are provided "as is", without warranty of any kind, express or implied, including as to their accuracy, completeness, currency or fitness for any particular purpose.',
-                'The data have not been corrected for changes in water level and may contain errors. The coloured surface in the 3D view is interpolated between the soundings for viewing only; it is not measured.',
-                'The data must not be used for navigation or for any purpose relating to safety on the water.',
-                'We, and the people and institutions involved in collecting and publishing these data, accept no liability for any loss, damage or injury arising from their use or from any errors or omissions in them. You use the data at your own risk and are responsible for deciding whether they suit your purpose.'],
-                'button': 'I understand'}
+            self.disclaimer = {
+                "title": "Disclaimer",
+                "paragraphs": [
+                    "The bathymetry data on this website are raw survey measurements shared for research and education. The data are provided \"as is\", without warranty of any kind, express or implied, including warranties of accuracy, completeness, currency, or fitness for a particular purpose.",
+                    "The depths were not corrected for changes in water level, and the soundings can contain errors. The coloured surface in the 3D view is interpolated between soundings for visualisation only and is not a measurement.",
+                    "The data must not be used for navigation or for any purpose related to safety on the water.",
+                    "The research group and the institutions involved in collecting and publishing the data accept no liability for any loss, damage, or injury arising from the use of the data or from errors or omissions in them. Users are responsible for assessing whether the data are suitable for their purpose."
+                ],
+                "button": "I understand"
+            }
         else:
             self.disclaimer = loaded_file.pop('disclaimer')
         if not isinstance(self.disclaimer.get('paragraphs', []), list):
@@ -736,6 +746,40 @@ class BathymetrySiteBuilder(object):
         cells = np.c_[column_min[triangle] + position % columns[triangle], row_min[triangle] + position // columns[triangle]]
         return np.unique(cells, axis=0)
 
+    def fill_enclosed_holes(self, neighbours, filled, inside_outline):
+        """
+        Returns the filled triangles with the holes enclosed by the surface added. A hole is a group of neighbouring
+        unfilled triangles inside the outline of the survey (no side longer than bed_max_gap). It is filled when every
+        triangle around it is filled; a hole that reaches the edge of the triangulation, or a triangle with a side longer
+        than bed_max_gap, remains empty. Such enclosed holes are mostly the inside of turns, where the soundings around
+        the hole belong to one pass, but the surface is measured on all sides.
+        neighbours holds, for each triangle, its three neighbouring triangles (-1 at the edge of the triangulation).
+        """
+        filled = filled.copy()
+        candidate = inside_outline & ~filled
+        visited = np.zeros(len(filled), dtype=bool)
+        holes_filled = 0
+        for start in np.nonzero(candidate)[0]:
+            if visited[start]:
+                continue
+            hole, stack, enclosed = [], [start], True
+            visited[start] = True
+            while stack:
+                triangle = stack.pop()
+                hole.append(triangle)
+                for neighbour in neighbours[triangle]:
+                    if neighbour == -1 or not inside_outline[neighbour]:
+                        enclosed = False
+                    elif candidate[neighbour] and not visited[neighbour]:
+                        visited[neighbour] = True
+                        stack.append(neighbour)
+            if enclosed:
+                filled[hole] = True
+                holes_filled += 1
+        if holes_filled > 0:
+            print('filled', holes_filled, 'holes enclosed by the surface')
+        return filled
+
     def interpolate_survey_bed(self, soundings):
         """
         Interpolates the depths of one survey day (or location) onto a regular grid in metres (UTM), linearly inside the
@@ -743,6 +787,7 @@ class BathymetrySiteBuilder(object):
         - inside a triangle that joins two different passes of the survey and whose longest side is at most
           self.bed_max_gap, so the bed is filled between neighbouring passes but not across wide gaps, and never
           beyond the outermost passes (triangles only exist between soundings); or
+        - inside a hole enclosed on all sides by such triangles (self.bed_fill_enclosed_holes, see fill_enclosed_holes); or
         - within self.bed_max_distance of a sounding, inside the triangulation (0 by default, so nothing is filled beside
           a lone pass: there, the values would be carried sideways from that pass, pulled by whatever distant sounding
           completes the triangle).
@@ -783,6 +828,9 @@ class BathymetrySiteBuilder(object):
             different_pass = (line_index[a] != line_index[b]) | (np.abs(along_track[a] - along_track[b]) > self.bed_pass_ratio * straight + 1.0)
             between_passes = between_passes | different_pass
         filled = between_passes & (longest_side <= self.bed_max_gap)
+        if self.bed_fill_enclosed_holes:
+            filled = self.fill_enclosed_holes(neighbours=triangulation.neighbors, filled=filled,
+                                              inside_outline=longest_side <= self.bed_max_gap)
         tree = cKDTree(np.c_[x, y])
         spacing = self.bed_grid_spacing
         while True:
@@ -1005,6 +1053,7 @@ class BathymetrySiteBuilder(object):
         settings['start_with_list_collapsed'] = self.start_with_list_collapsed
         settings['bed_max_distance'] = self.bed_max_distance
         settings['bed_max_gap'] = self.bed_max_gap
+        settings['bed_fill_enclosed_holes'] = self.bed_fill_enclosed_holes
         settings['vertical_exaggeration'] = self.vertical_exaggeration
         settings['show_disclaimer'] = self.show_disclaimer
         settings['disclaimer'] = self.disclaimer

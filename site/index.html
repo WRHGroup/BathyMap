@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BathyMap</title>
-<meta name="description" content="Map and downloads of raw bathymetry survey data.">
+<meta name="description" content="Raw bathymetry survey data on a map, with downloads of the original files and CSV exports.">
 <link rel="preconnect" href="https://a.basemaps.cartocdn.com">
 <link rel="preconnect" href="https://b.basemaps.cartocdn.com">
 <link rel="preconnect" href="https://server.arcgisonline.com">
@@ -50,10 +50,10 @@
       <summary class="eyebrow">About this data</summary>
       <p id="site-description"></p>
       <dl class="refs">
-        <dt>Depth</dt><dd id="depth-reference">as logged by the instrument</dd>
-        <dt>Times</dt><dd id="time-reference">as logged by the instrument</dd>
-        <dt>Heights</dt><dd id="height-reference">as logged by the instrument</dd>
-        <dt>Coordinates</dt><dd>WGS 84 latitude and longitude, decimal degrees in the CSV files</dd>
+        <dt>Depth</dt><dd id="depth-reference">as recorded by the instrument</dd>
+        <dt>Times</dt><dd id="time-reference">as recorded by the instrument</dd>
+        <dt>Heights</dt><dd id="height-reference">as recorded by the instrument</dd>
+        <dt>Coordinates</dt><dd>WGS 84 latitude and longitude (decimal degrees in the CSV files)</dd>
         <dt id="licence-label" hidden>Licence</dt><dd id="licence" hidden></dd>
         <dt id="contact-label" hidden>Contact</dt><dd id="contact" hidden></dd>
       </dl>
@@ -90,7 +90,7 @@
           <div class="select3d"><label for="base3d">Basemap at the water surface</label><select id="base3d" class="legend-select"><option value="">None (plain background)</option></select></div>
           <p id="basemap-note" class="caveat3d" hidden></p>
           <label class="toggle3d"><input type="checkbox" id="show-water"><span>Water surface</span><span></span></label>
-          <label class="toggle3d"><input type="checkbox" id="fade3d" checked><span>Fade estimates far from soundings</span><span></span></label>
+          <label class="toggle3d"><input type="checkbox" id="fade3d" checked><span>Fade the surface away from soundings</span><span></span></label>
           <div class="slider3d"><label for="exag3d">Vertical exaggeration</label><output id="exag3d-out" for="exag3d">10×</output><input type="range" id="exag3d" min="1" max="60" step="1" value="10"></div>
           <div class="slider3d"><label for="size3d">Sounding size</label><output id="size3d-out" for="size3d">1.0</output><input type="range" id="size3d" min="0.4" max="2.5" step="0.1" value="1"></div>
           <p id="caveat3d" class="caveat3d"></p>
@@ -118,7 +118,7 @@
         </div>
         <span id="scale-note" class="scale-note"></span>
       </div>
-      <div id="legend-hint" class="legend-hint">Zoom in to see soundings</div>
+      <div id="legend-hint" class="legend-hint">Zoom in to show the soundings.</div>
     </div>
   </div>
 </main>

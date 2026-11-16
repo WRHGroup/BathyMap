@@ -1,17 +1,17 @@
 {
     "site_title": "BathyMap",
-    "site_description": "Raw bathymetry survey data. Explore each survey line on the map, read the depth, date and time of individual soundings, and download the original files, CSV exports, or any area you select.",
+    "site_description": "This website shares raw bathymetry data collected in field surveys. Each survey line can be viewed on the map, with the depth, date, and time of individual soundings, and in 3D. The original files, CSV exports, and the soundings within any selected area can be downloaded.",
     "organisation": "",
     "contact": "",
     "licence": "",
     "show_disclaimer": true,
     "disclaimer": {
-        "title": "Before you use these data",
+        "title": "Disclaimer",
         "paragraphs": [
-            "The bathymetry data on this site are raw survey measurements, shared for research and education. They are provided \"as is\", without warranty of any kind, express or implied, including as to their accuracy, completeness, currency or fitness for any particular purpose.",
-            "The data have not been corrected for changes in water level and may contain errors. The coloured surface in the 3D view is interpolated between the soundings for viewing only; it is not measured.",
-            "The data must not be used for navigation or for any purpose relating to safety on the water.",
-            "We, and the people and institutions involved in collecting and publishing these data, accept no liability for any loss, damage or injury arising from their use or from any errors or omissions in them. You use the data at your own risk and are responsible for deciding whether they suit your purpose."
+            "The bathymetry data on this website are raw survey measurements shared for research and education. The data are provided \"as is\", without warranty of any kind, express or implied, including warranties of accuracy, completeness, currency, or fitness for a particular purpose.",
+            "The depths were not corrected for changes in water level, and the soundings can contain errors. The coloured surface in the 3D view is interpolated between soundings for visualisation only and is not a measurement.",
+            "The data must not be used for navigation or for any purpose related to safety on the water.",
+            "The research group and the institutions involved in collecting and publishing the data accept no liability for any loss, damage, or injury arising from the use of the data or from errors or omissions in them. Users are responsible for assessing whether the data are suitable for their purpose."
         ],
         "button": "I understand"
     },
@@ -30,9 +30,9 @@
     "write_combined_csv": true,
     "survey_metadata": {},
     "metadata_file_name": "metadata.json",
-    "time_reference": "as logged by the instrument",
-    "depth_reference": "as logged by the instrument",
-    "height_reference": "GNSS heights above the ellipsoid, as logged (no geoid model applied). They are not heights above sea level and do not match the contours of the topographic basemap; the difference depends on the location.",
+    "time_reference": "as recorded by the instrument",
+    "depth_reference": "as recorded by the instrument",
+    "height_reference": "GNSS heights relative to the ellipsoid, as recorded (no geoid model was applied). Therefore, they are not heights above sea level and differ from the contours of the topographic basemap by an amount that depends on the location.",
     "default_basemap": "openstreetmap",
     "map_variables": [
         {
@@ -46,7 +46,7 @@
         {
             "column": "Height - Depth",
             "label": "Bed elevation",
-            "note": "GNSS height minus water depth. Above the ellipsoid, not sea level",
+            "note": "GNSS height minus water depth, relative to the ellipsoid (not sea level).",
             "unit": "m",
             "colours": "elevation",
             "decimals": 3,
@@ -55,7 +55,7 @@
         {
             "column": "Height",
             "label": "GNSS height",
-            "note": "Above the ellipsoid, not sea level",
+            "note": "Relative to the ellipsoid (not sea level).",
             "unit": "m",
             "colours": "sequential",
             "decimals": 3,
@@ -73,7 +73,7 @@
         {
             "column": "Trail Distance",
             "label": "Distance along line",
-            "note": "From the first sounding of each line",
+            "note": "Measured from the first sounding of each line.",
             "unit": "m",
             "from_line_start": true,
             "colours": "sequential",
@@ -99,7 +99,7 @@
         {
             "column": "Roll",
             "label": "Roll",
-            "note": "Logged in radians, shown in degrees",
+            "note": "Recorded in radians and shown in degrees.",
             "unit": "°",
             "scale": 57.29578,
             "colours": "diverging",
@@ -109,7 +109,7 @@
         {
             "column": "Pitch",
             "label": "Pitch",
-            "note": "Logged in radians, shown in degrees",
+            "note": "Recorded in radians and shown in degrees.",
             "unit": "°",
             "scale": 57.29578,
             "colours": "diverging",
@@ -119,7 +119,7 @@
         {
             "column": "Diff Delay",
             "label": "Correction age",
-            "note": "Age of the RTK corrections",
+            "note": "Age of the RTK corrections.",
             "unit": "s",
             "colours": "sequential",
             "decimals": 1,
@@ -187,6 +187,7 @@
     "bed_max_distance": 0,
     "bed_max_gap": 30,
     "bed_pass_ratio": 2,
+    "bed_fill_enclosed_holes": true,
     "vertical_exaggeration": "auto",
     "bed_max_points": 250000
 }
