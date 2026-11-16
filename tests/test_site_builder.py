@@ -289,3 +289,30 @@ def test_categorical_map_variable():
     assert(gps['categories']['4']['label'] == 'RTK fixed')
     variables = SiteModel.site_map_variables(all_values={'Depth': [1.0, 2.0, 3.0], 'GPS State': [4, 4, 4]})
     assert('GPS State' not in [variable['column'] for variable in variables])
+
+
+def test_fill_enclosed_holes():
+    """
+    Checks that a hole surrounded on all sides by the surface is filled, while a hole that reaches the edge of the
+    triangulation, or a triangle with a side longer than bed_max_gap, remains empty.
+    """
+    from scipy.spatial import Delaunay
+    SiteModel = BathymetrySiteBuilder('tests/files/1_site_config.json')
+    SiteModel.setup()
+    grid_x, grid_y = np.meshgrid(np.arange(7.0), np.arange(7.0))
+    points = np.c_[grid_x.ravel(), grid_y.ravel()] + np.random.default_rng(1).uniform(-0.1, 0.1, (49, 2))
+    triangulation = Delaunay(points)
+    centre = np.argmin(np.hypot(points[:, 0] - 3, points[:, 1] - 3))
+    corner = np.argmin(np.hypot(points[:, 0], points[:, 1]))
+    around_centre = np.any(triangulation.simplices == centre, axis=1)
+    at_corner = np.any(triangulation.simplices == corner, axis=1)
+    inside_outline = np.ones(len(triangulation.simplices), dtype=bool)
+    filled = ~(around_centre | at_corner)
+    result = SiteModel.fill_enclosed_holes(neighbours=triangulation.neighbors, filled=filled, inside_outline=inside_outline)
+    assert(result[around_centre].all())
+    assert(not result[at_corner].any())
+    # the same hole next to a triangle outside the outline remains empty
+    neighbour_of_hole = [n for n in triangulation.neighbors[np.nonzero(around_centre)[0]].ravel() if n != -1 and not around_centre[n]][0]
+    inside_outline[neighbour_of_hole] = False
+    result = SiteModel.fill_enclosed_holes(neighbours=triangulation.neighbors, filled=filled, inside_outline=inside_outline)
+    assert(not result[around_centre].any())

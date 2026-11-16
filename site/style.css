@@ -1,57 +1,62 @@
 /* Layout: one-screen map app. Top bar, a survey-line panel on the left (a bottom drawer on phones), map fills the rest.
-   Palette borrows from a hydrographic chart: pale chart-paper ground, navy ink, and chart magenta for the selected line. */
+   Classical treatment: a serif for titles, a plain sans for the interface and figures, white and grey grounds, a
+   muted navy for controls, and near-black (white on dark maps) for what is selected on the map, as neither colour
+   appears in the depth scale. */
 :root {
-  --paper: #eef3f5;
+  --paper: #f3f3f0;
   --surface: #ffffff;
-  --ink: #0f2533;
-  --muted: #566b78;
-  --rule: #d3dee4;
-  --accent: #a8246f;
+  --ink: #1d2730;
+  --muted: #5d6870;
+  --rule: #d8dad6;
+  --accent: #24476b;
   --accent-ink: #ffffff;
-  --accent-soft: #f6e4ee;
-  --track: #1d4a63;
-  --shadow: 0 1px 2px rgba(15, 37, 51, 0.08), 0 6px 18px rgba(15, 37, 51, 0.10);
-  --stage: #e3ebef;
-  --stage-grid: #9fb3bf;
-  --water: #6fa8c7;
-  --font-display: "Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --accent-soft: #e8edf3;
+  --highlight: #111a21;
+  --track: #2f4858;
+  --shadow: 0 1px 2px rgba(29, 39, 48, 0.12);
+  --stage: #ecedea;
+  --stage-grid: #a9b0b3;
+  --water: #7fa7c2;
+  --font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
   --font-body: "Source Sans 3", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-data: "Source Sans 3", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --panel-width: 22rem;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #0b1620;
-    --surface: #102230;
-    --ink: #e3edf2;
-    --muted: #8ba2b0;
-    --rule: #213848;
-    --accent: #f26bb6;
-    --accent-ink: #1a0712;
-    --accent-soft: #3a1830;
-    --track: #9cc6dc;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 22px rgba(0, 0, 0, 0.35);
-    --stage: #18303f;
-    --stage-grid: #3d5a6b;
-    --water: #7fb6d6;
+    --paper: #14191e;
+    --surface: #1b2228;
+    --ink: #e2e5e7;
+    --muted: #9ba5ad;
+    --rule: #2f3941;
+    --accent: #9dbbd8;
+    --accent-ink: #14191e;
+    --accent-soft: #24313d;
+    --highlight: #f4f4f2;
+    --track: #b4c6d3;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --stage: #1d252b;
+    --stage-grid: #46535c;
+    --water: #8fb1c9;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --paper: #0b1620;
-  --surface: #102230;
-  --ink: #e3edf2;
-  --muted: #8ba2b0;
-  --rule: #213848;
-  --accent: #f26bb6;
-  --accent-ink: #1a0712;
-  --accent-soft: #3a1830;
-  --track: #9cc6dc;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 22px rgba(0, 0, 0, 0.35);
-  --stage: #18303f;
-  --stage-grid: #3d5a6b;
-  --water: #7fb6d6;
+  --paper: #14191e;
+  --surface: #1b2228;
+  --ink: #e2e5e7;
+  --muted: #9ba5ad;
+  --rule: #2f3941;
+  --accent: #9dbbd8;
+  --accent-ink: #14191e;
+  --accent-soft: #24313d;
+  --highlight: #f4f4f2;
+  --track: #b4c6d3;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --stage: #1d252b;
+  --stage-grid: #46535c;
+  --water: #8fb1c9;
   color-scheme: dark;
 }
 
@@ -308,7 +313,7 @@ a { color: inherit; }
   cursor: pointer;
 }
 .line-row:hover { background: var(--surface); }
-.line-row.selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.line-row.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--rule); }
 .line-row input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .line-main { min-width: 0; }
 .line-name { font: 600 1rem/1.15 var(--font-display); letter-spacing: 0.02em; }
@@ -607,3 +612,31 @@ a { color: inherit; }
 .legend-cats li { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
 .legend-cats .data { color: var(--muted); font-size: 0.72rem; }
 .cat-swatch { width: 0.8rem; height: 0.8rem; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px rgba(15, 37, 51, 0.35); }
+
+
+/* ---------- classical treatment ----------
+   Titles in the serif; labels in sentence case without letter-spacing; figures in the interface sans with tabular
+   numerals; thin rules instead of coloured bars; small radii instead of pills. */
+h1, h2, h3, .bed-title, .disclaimer-card h2, .location-name, .line-name, .site-text b { font-family: var(--font-display); font-weight: 600; letter-spacing: 0; }
+.topbar h1 { font-size: 1.4rem; font-weight: 600; }
+.eyebrow, .legend-title, .stats dt, .probe-label, .probe3d .kind, .text-button, .location-name {
+  text-transform: none; letter-spacing: 0;
+}
+.eyebrow, .legend-title, .stats dt, .probe-label, .probe3d .kind { font-family: var(--font-body); font-weight: 600; font-size: 0.8rem; color: var(--muted); }
+.text-button { font-family: var(--font-body); font-weight: 600; font-size: 0.8rem; color: var(--accent); }
+.text-button:hover { color: var(--ink); text-decoration: underline; }
+.location-name { font-size: 0.98rem; color: var(--ink); }
+.location-head .chev { color: var(--muted); }
+.line-name { font-size: 0.98rem; }
+.button, .view-tabs button, .views3d button, .open-3d { font-family: var(--font-body); letter-spacing: 0; }
+.button { border-radius: 3px; font-weight: 600; }
+.data, .data-ink, .stats dd, .legend-unit, .legend-ticks, .probe strong, .probe-depth, .slider3d output { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.detail, .disclaimer-card, .select-bar { border-top-width: 1px; border-top-color: var(--rule); }
+.detail, .legend, .controls3d, .disclaimer-card, .probe, .select-bar, .view-tabs, .views3d { border-radius: 3px; }
+.site-pin { border-radius: 3px; padding: 3px 8px 3px 5px; }
+.site-dot { width: 10px; height: 10px; border-width: 2px; box-shadow: 0 0 0 1px var(--accent); }
+.example-pill { display: none; }
+.probe3d .kind.measured { color: var(--ink); }
+.surface-note { background: var(--paper); border: 1px solid var(--rule); color: var(--ink); }
+.disclaimer-card { border-top-width: 1px; }
+.disclaimer-card h2 { font-size: 1.3rem; }
